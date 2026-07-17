@@ -55,7 +55,7 @@ jobs:
           # 4. 下载并解压 LLVM 工具链 (彻底剥离最外层目录)
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz
           filename=$(tar -tf llvm-arm-toolchain-ship-10.0.9.tar.gz | awk 'NR==2 {print; exit}' | cut -d/ -f2)
-          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C --strip-components=1
+          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz --strip-components=1
           mv $filename llvm-toolchain
 
           # 5. 下载并解压配套的 GCC 4.9 工具链 (彻底剥离最外层目录)
