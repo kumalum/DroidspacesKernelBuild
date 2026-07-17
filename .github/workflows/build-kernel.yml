@@ -18,71 +18,115 @@ jobs:
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
 
-      - name: 3. 使用 sed 动态注入 DroidSpaces 必需的 kABI 豁免与结构体对齐
-        run: |
-          cd kernel-src
-          
-          echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
-          sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      # - name: 3. 使用 sed 动态注入 DroidSpaces 必需的 kABI 豁免与结构体对齐, (暂不修改 高通的 techpack datarmnet 路径问题)
+      #   run: |
+      #     cd kernel-src
+      #     
+      #     echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
+      #     sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
 
-          echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
-          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
+      #     echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
+      #     sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
 
-          echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
-          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
+      #     echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
+      #     sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
 
-          echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
-          sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
+      #     echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
+      #     sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
 
-          echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
-          # 创建全局 trace 目录
-          mkdir -p include/trace/
-          
-          # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
-          # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
-          if [ -d techpack/datarmnet/core ]; then
-            find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
-              # 修正宏定义路径
-              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
-              
-              # 建立绝对路径软链接，防止编译器迷路
-              filename=$(basename "$header")
-              ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
-            done
-          fi
+      #     # echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
+      #     # # 创建全局 trace 目录
+      #     # mkdir -p include/trace/
+      #     # 
+      #     # # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
+      #     # # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
+      #     # if [ -d techpack/datarmnet/core ]; then
+      #     #   find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
+      #     #     # 修正宏定义路径
+      #     #     sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
+      #     #     
+      #     #     # 建立绝对路径软链接，防止编译器迷路
+      #     #     filename=$(basename "$header")
+      #     #     ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
+      #     #   done
+      #     # fi
 
-          echo "==== 验证高通网卡驱动批量修复情况 ===="
-          ls -l include/trace/rmnet_trace.h || true
-          ls -l include/trace/wda.h || true
-          
-          echo "==== 验证代码动态修改情况 ===="
-          git diff include/linux/sched/user.h || true
+      #     # echo "==== 验证高通网卡驱动批量修复情况 ===="
+      #     # ls -l include/trace/rmnet_trace.h || true
+      #     # ls -l include/trace/wda.h || true
+      #     
+      #     echo "==== 验证代码动态修改情况 ===="
+      #     git diff include/linux/sched/user.h || true
 
-      - name: 4. 修改 gki_defconfig 启用容器隔离命名空间
+      - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces (暂时不修改高通 QMI依赖)
         run: |
           cd kernel-src
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
-          
-          echo "==== 正在向 gki_defconfig 注入 DroidSpaces 必需内核参数 ===="
-          cat <<EOF >> $DEFCONFIG
 
-          # === DroidSpaces Custom Configurations ===
-          CONFIG_NAMESPACES=y
-          CONFIG_PID_NS=y
-          CONFIG_IPC_NS=y
-          CONFIG_UTS_NS=y
-          CONFIG_SYSVIPC=y
-          CONFIG_POSIX_MQUEUE=y
-          CONFIG_SECCOMP=y
-          # =========================================
-          EOF
-          
-          # 打印 defconfig 尾部确保成功写入
-          tail -n 12 $DEFCONFIG
+          # 定义一个智能替换/追加的函数
+          set_config() {
+            local config="$1"
+            local value="$2"
+            
+            # 1. 如果配置项被注释了 (例如 # CONFIG_XXX is not set)，强行替换为 CONFIG_XXX=y
+            if grep -q "# $config is not set" "$DEFCONFIG"; then
+              sed -i "s|# $config is not set|$config=$value|g" "$DEFCONFIG"
+              echo "[替换成功] $config=$value (原为未设置)"
+            # 2. 如果配置项已经是别的值，强行覆盖
+            elif grep -q "$config=" "$DEFCONFIG"; then
+              sed -i "s|$config=.*|$config=$value|g" "$DEFCONFIG"
+              echo "[覆盖成功] $config=$value"
+            # 3. If 如果文件中完全没有这个配置，则在末尾追加
+            else
+              echo "$config=$value" >> "$DEFCONFIG"
+              echo "[追加成功] $config=$value (原文件中缺失)"
+            fi
+          }
+
+          echo "==== 开始精准注入 DroidSpaces 核心与推荐配置 ===="
+          # IPC
+          set_config "CONFIG_SYSVIPC" "y"
+          set_config "CONFIG_POSIX_MQUEUE" "y"
+
+          # Namespaces
+          set_config "CONFIG_IPC_NS" "y"
+          set_config "CONFIG_PID_NS" "y"
+
+          # HW Access Support
+          set_config "CONFIG_DEVTMPFS" "y"
+
+          # Networking (Enhanced NAT support)
+          set_config "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE" "y"
+
+          # --- Optional but recommended configs ---
+          set_config "CONFIG_USER_NS" "y"
+          set_config "CONFIG_NETFILTER_XT_TARGET_REJECT" "y"
+          set_config "CONFIG_NETFILTER_XT_TARGET_LOG" "y"
+          set_config "CONFIG_NETFILTER_XT_MATCH_RECENT" "y"
+
+          # Fail2ban support
+          set_config "CONFIG_IP_SET" "y"
+          set_config "CONFIG_IP_SET_HASH_IP" "y"
+          set_config "CONFIG_IP_SET_HASH_NET" "y"
+          set_config "CONFIG_NETFILTER_XT_SET" "y"
+
+          # NixOS / tmpfs support
+          # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
+          # set_config "CONFIG_TMPFS_XATTR" "y"
+
+          # echo "==== 开始精准注入高通网卡 MODPOST 必需依赖 ===="
+          # set_config "CONFIG_QCOM_QMI_HELPERS" "y"
+          # set_config "CONFIG_QRTR" "y"
+          # set_config "CONFIG_QRTR_SMD" "y"
+          # set_config "CONFIG_QRTR_MHI" "y"
+          # set_config "CONFIG_CRYPTO_SHA1_ARM64_CE" "y"
+
+          echo "==== 检查部分核心修改结果 ===="
+          grep -E "CONFIG_SYSVIPC|CONFIG_POSIX_MQUEUE|CONFIG_QCOM_QMI_HELPERS|CONFIG_USER_NS" "$DEFCONFIG" || true
 
       - name: 5. 极速拉取 LineageOS 官方配套 Clang 编译器 (r416183b)
         run: |
