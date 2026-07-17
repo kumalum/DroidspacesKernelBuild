@@ -62,7 +62,9 @@ jobs:
           
           echo "==== 正在应用本地 002-posix_mqueue.patch ===="
           if patch -p1 < $PATCH_DIR/002-posix_mqueue.patch; then
-            echo "002 修补失败, 退出程序"
+            echo "✅ 002 修补成功"
+          else
+            echo "❌ 002 修补失败, 退出程序"
             exit 1
           fi
           
@@ -226,31 +228,10 @@ jobs:
           # Namespaces
           set_config "CONFIG_IPC_NS" "y"
           set_config "CONFIG_PID_NS" "y"
-
-          # HW Access Support
-          # set_config "CONFIG_DEVTMPFS" "y"
-
-          # Networking (Enhanced NAT support)
-          # set_config "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE" "y"
-
-          # --- Optional but recommended configs ---
-          # set_config "CONFIG_USER_NS" "y"
-          # set_config "CONFIG_NETFILTER_XT_TARGET_REJECT" "y"
-          # set_config "CONFIG_NETFILTER_XT_TARGET_LOG" "y"
-          # set_config "CONFIG_NETFILTER_XT_MATCH_RECENT" "y"
-
-          # Fail2ban support
-          # set_config "CONFIG_IP_SET" "y"
-          # set_config "CONFIG_IP_SET_HASH_IP" "y"
-          # set_config "CONFIG_IP_SET_HASH_NET" "y"
-          # set_config "CONFIG_NETFILTER_XT_SET" "y"
-
+          
           # NixOS / tmpfs support
           # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
           # set_config "CONFIG_TMPFS_XATTR" "y"
-
-          echo "==== 检查部分核心修改结果 ===="
-          grep -E "CONFIG_SYSVIPC|CONFIG_POSIX_MQUEUE|CONFIG_USER_NS|CONFIG_PID_NS" "$DEFCONFIG" || true
 
       - name: 5. 极速拉取 LineageOS 官方配套 Clang 编译器 (r416183b)
         run: |
