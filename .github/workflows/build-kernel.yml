@@ -41,7 +41,18 @@ jobs:
           echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
           # 替换 ipc/mqueue.c 中由于没有打 002 补丁可能导致的结构体指针错误
           sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
-
+          
+          echo "==== 5. 修复高通 techpack datarmnet 找不到 rmnet_trace.h 的问题 ===="
+          # 在 techpack/datarmnet/core/Makefile 中强行加入当前目录作为头文件搜索路径
+          if [ -f techpack/datarmnet/core/Makefile ]; then
+            sed -i 's|ccflags-y +=|ccflags-y += -I$(src) -I$(srctree)/$(src)|g' techpack/datarmnet/core/Makefile
+          fi
+          
+          # 顺便修复可能存在的其他 datarmnet 子目录 trace 报错（以防万一）
+          if [ -f techpack/datarmnet/core/Makefile.am ]; then
+            sed -i 's|AM_CFLAGS +=|AM_CFLAGS += -I$(src) -I$(srctree)/$(src)|g' techpack/datarmnet/core/Makefile.am
+          fi
+          
           echo "==== 验证代码动态修改情况 ===="
           git diff include/linux/sched/user.h
           git diff init/Kconfig
