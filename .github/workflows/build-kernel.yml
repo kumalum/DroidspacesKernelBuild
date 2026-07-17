@@ -70,13 +70,10 @@ jobs:
           # 验证写入情况
           tail -n 12 $DEFCONFIG
 
-      - name: 6. 下载 Google 官方 AOSP Clang 编译器
+      - name: 6. 极速拉取 LineageOS 官方配套 Clang 编译器 (r416183b)
         run: |
-          mkdir clang
-          cd clang
-          curl -Lo clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r450784d.tar.gz
-          tar -xzf clang.tar.gz
-          rm -f clang.tar.gz
+          # 直接克隆 20.0 版本的官方预编译工具链， depth=1 保证不拉取历史记录，速度极快
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
 
       - name: 7. 执行内核编译
         run: |
