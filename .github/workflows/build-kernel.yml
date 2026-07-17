@@ -23,7 +23,8 @@ jobs:
       
       - name: Fix rmnet_trace.h include path in techpack
         run: |
-          TARGET_MAKEFILE="techpack/datarmnet/core/Makefile"
+          
+          TARGET_MAKEFILE="kernel-src/techpack/datarmnet/core/Makefile"
           
           if [ -f "$TARGET_MAKEFILE" ]; then
               echo "🔧 正在修复 $TARGET_MAKEFILE 中的包含路径..."
