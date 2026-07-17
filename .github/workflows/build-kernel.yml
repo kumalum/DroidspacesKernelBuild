@@ -21,6 +21,22 @@ jobs:
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
       
+      - name: Fix rmnet_trace.h include path in techpack
+        run: |
+          TARGET_MAKEFILE="techpack/datarmnet/core/Makefile"
+          
+          if [ -f "$TARGET_MAKEFILE" ]; then
+              echo "🔧 正在修复 $TARGET_MAKEFILE 中的包含路径..."
+              
+              # 在 MODNAME 所在行的下一行插入 ccflags-y
+              sed -i '/MODNAME?=rmnet_core/a ccflags-y += -I\$(PWD)' "$TARGET_MAKEFILE"
+              
+              echo "📝 修改后的 Makefile 内容："
+              cat "$TARGET_MAKEFILE"
+          else
+              echo "⚠️ 警告: 未找到 $TARGET_MAKEFILE，请检查路径是否正确。"
+          fi
+
       - name: 3. 自动应用 DroidSpaces 补丁与 KABI 智能修复
         run: |
           cd kernel-src
