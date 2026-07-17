@@ -128,8 +128,8 @@ jobs:
           echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
           sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
 
-          echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
-          sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
+          #echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
+          # sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
 
           echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
           # 创建全局 trace 目录
@@ -260,21 +260,15 @@ jobs:
         run: |
           # 赋予所有脚本和二进制文件可执行权限
           chmod +x AIK-Linux/unpackimg.sh AIK-Linux/repackimg.sh AIK-Linux/cleanup.sh AIK-Linux/bin/linux/x86_64/*
+      
       - name: 8. 自动解包原本的 boot.img 并替换新内核
         run: |
-          # 1. 检查项目根目录下是否存在原厂 boot.img
-          if [ ! -f "boot.img" ]; then
-            echo "❌ 错误：未在项目根目录下找到用于替换的 boot.img 文件！"
-            echo "💡 请将你手机原本可正常开机的 boot.img 命名为 boot.img，并放入 GitHub 仓库根目录后再运行。"
-            exit 1
-          fi
-
-          # 2. 清理 AIK 残留，并将 boot 解包
+          # 1. 清理 AIK 残留，并将 boot 解包
           cd AIK-Linux
           ./cleanup.sh
           ./unpackimg.sh boot.img
 
-          # 3. 用刚刚编译出来的 Image 替换解包后的内核文件
+          # 2. 用刚刚编译出来的 Image 替换解包后的内核文件
           # 编译出的 Image 路径位于 ../kernel-src/arch/arm64/boot/Image
           NEW_KERNEL="$GITHUB_WORKSPACE/kernel-src/arch/arm64/boot/Image"
           if [ -f "$NEW_KERNEL" ]; then
