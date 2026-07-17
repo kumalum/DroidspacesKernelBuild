@@ -18,73 +18,83 @@ jobs:
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
       
-      - name: 2.5.5 修复高通 techpack datarmnet 找不到 rmnet_trace.h 的问题
+      # - name: 2.5.5 修复高通 techpack datarmnet 找不到 rmnet_trace.h 的问题
+      #   run: |
+      #     
+      #     cd kernel-src 
+      #     
+      #     # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
+      #     # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
+      #     if [ -d techpack/datarmnet/core ]; then
+      #       find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
+      #         # 修正宏定义路径
+      #         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
+      #         
+      #         # 建立绝对路径软链接，防止编译器迷路
+      #         filename=$(basename "$header")
+      #         ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
+      #       done
+      #     fi
+
+      #     echo "==== 验证高通网卡驱动批量修复情况 ===="
+      #     ls -l include/trace/rmnet_trace.h || true
+      #     ls -l include/trace/wda.h || true
+
+
+      - name: 4. 下载并配置联合编译器工具链 (LLVM + GCC 4.9)
         run: |
-          
-          cd kernel-src 
-          
-          # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
-          # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
-          if [ -d techpack/datarmnet/core ]; then
-            find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
-              # 修正宏定义路径
-              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
-              
-              # 建立绝对路径软链接，防止编译器迷路
-              filename=$(basename "$header")
-              ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
-            done
-          fi
+          mkdir -p $GITHUB_WORKSPACE/llvm-toolchain
+          mkdir -p $GITHUB_WORKSPACE/gcc-toolchain
 
-          echo "==== 验证高通网卡驱动批量修复情况 ===="
-          ls -l include/trace/rmnet_trace.h || true
-          ls -l include/trace/wda.h || true
+          # 1. 下载 LLVM 工具链
+          wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz
+          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain
 
+          # 2. 下载配套的 GCC 4.9 工具链
+          wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/aarch64-linux-android-4.9-Linux-5.4.tar.gz
+          tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain
 
-      - name: 5. 极速拉取 LineageOS 官方配套 Clang 编译器 (r416183b)
-        run: |
-          # 直接克隆 20.0 版本的官方预编译工具链，避免 wget 400 错误
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
+          # 3. 将两个工具链的 bin 目录都注入系统环境变量
+          echo "$GITHUB_WORKSPACE/llvm-toolchain/bin" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/gcc-toolchain/bin" >> $GITHUB_PATH
 
-      - name: 6. 执行内核编译 (使用 AOSP 交叉编译链)
+          echo "==== 验证工具链版本 ===="
+          $GITHUB_WORKSPACE/llvm-toolchain/bin/clang --version
+          $GITHUB_WORKSPACE/gcc-toolchain/bin/aarch64-linux-android-gcc --version
+
+      - name: 5. 联合调用 LLVM 与 GCC 4.9 编译内核 (包含 DroidSpaces 支持)
         run: |
           cd kernel-src
           
-          # 1. 彻底清理之前残留的编译产物
-          make mrproper
+          # 1. 定义核心环境变量
+          export O=out
+          export ARCH=arm64
+          export SUBARCH=arm64
           
-          # 2. 生成配置文件
-          make ARCH=arm64 gki_defconfig
+          # 2. 交叉编译前缀精准对齐（核心改动）
+          # 汇编和链接完全交给刚刚解压的 aarch64-linux-android- 4.9 编译器
+          export CROSS_COMPILE="$GITHUB_WORKSPACE/gcc-toolchain/bin/aarch64-linux-android-"
+          export CLANG_TRIPLE=aarch64-linux-gnu-
           
-          # 3. 声明编译器环境变量
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          MAKE_FLAGS="
-            ARCH=arm64 \
-            CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            LLVM=1 \
-            LLVM_IAS=1
-          "
-
-          echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
-          make -j$(nproc) $MAKE_FLAGS Image || exit 1
-
-          echo "==== 开始多线程编译外置驱动模块 (允许忽略特定符号未定义) ===="
-          # 核心技巧：通过向 KBUILD_EXTRA_SYMBOLS 或 KBUILD_MODPOST_WARN 注入参数
-          # 强制让 MODPOST 把 undefined 错误降级为 WARNING 警告，从而顺利生成驱动模块 .ko 文件
-          make -j$(nproc) $MAKE_FLAGS modules KBUILD_MODPOST_WARN=1 > build_log.txt 2>&1 || EXIT_CODE=$?
-
-          if [ ! -z "$EXIT_CODE" ]; then
-            echo "=============================================="
-            echo "❌ 编译失败！正在为你筛选最关键的报错信息..."
-            echo "=============================================="
-            grep -i -C 5 "error:" build_log.txt || tail -n 100 build_log.txt
-            exit 1
+          # 3. 生成配置
+          make $DEFCONFIG_NAME CC=clang
+          
+          echo "==== 开始执行混编流程 ===="
+          # 4. 联合编译：LLVM 负责 C 语言，GCC 负责汇编和链接
+          make -j$(nproc --all) \
+               CC=clang \
+               CROSS_COMPILE=$CROSS_COMPILE \
+               CLANG_TRIPLE=$CLANG_TRIPLE \
+               Image
+               
+          echo "==== 编译检查 ===="
+          if [ -f "out/arch/arm64/boot/Image" ]; then
+            echo "🎉 使用官方推荐工具链编译成功！"
+            mkdir -p arch/arm64/boot/
+            cp out/arch/arm64/boot/Image arch/arm64/boot/Image
           else
-            echo "=============================================="
-            echo "🎉 编译成功！所有内核与驱动模块链接完毕！"
-            echo "=============================================="
+            echo "❌ 错误：未能在目标位置找到 Image 文件！"
+            exit 1
           fi
 
       - name: 7. 收集最终产物
