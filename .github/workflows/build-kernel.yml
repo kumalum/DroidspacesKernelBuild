@@ -26,7 +26,7 @@ jobs:
           cd kernel-src
           
           # 1. 确保 patches 目录存在
-          PATCH_DIR="$../patches"
+          PATCH_DIR="../patches"
           if [ ! -d "$PATCH_DIR" ]; then
             echo "❌ 错误：在仓库中未找到 patches 目录 ($PATCH_DIR)！"
             exit 1
