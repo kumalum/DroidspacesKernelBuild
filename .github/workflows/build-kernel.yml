@@ -91,7 +91,7 @@ jobs:
             else
                 echo "❌ 修复失败，文件缩进或内容可能与预期不符，建议通过 'git diff' 或手动检查。"
             fi
-        fi
+          fi
 
 
       - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces GKI
