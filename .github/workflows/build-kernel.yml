@@ -83,22 +83,36 @@ jobs:
           # 2. 生成默认配置文件
           make ARCH=arm64 gki_defconfig
           
-          # 3. 开始多线程编译
-          # 使用 LLVM=1 和 LLVM_IAS=1 告诉 Makefile 使用 clang 而不是 gcc
+          # 3. 开始编译
+          # 暂时不使用并行编译（或者使用单线程编译以精确定位错误），并将完整日志记录到 build_log.txt
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make -j$(nproc) ARCH=arm64 \
+          
+          MAKE_FLAGS="
+            ARCH=arm64 \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 \
-            LLVM_IAS=1 \
-            | tee build_log.txt  # 将日志保存到文件，方便后面查看
-          
-          # 4. 如果上面的命令返回了非 0 状态码，打印最后 50 行日志并强制报错退出
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "==== 编译失败，打印最后 50 行日志 ===="
-            tail -n 50 build_log.txt
+            LLVM_IAS=1
+          "
+
+          echo "==== 开始多线程编译并捕获日志 ===="
+          # 使用 -k (keep going) 尽可能暴露所有错误，或去掉 -j 限制方便看清顺序
+          make -j$(nproc) $MAKE_FLAGS > build_log.txt 2>&1 || EXIT_CODE=$?
+
+          if [ ! -z "$EXIT_CODE" ]; then
+            echo "=============================================="
+            echo "❌ 编译失败！正在为你筛选最关键的报错信息..."
+            echo "=============================================="
+            
+            # 查找日志中包含 "error:" 的行，并打印其前后的上下文
+            grep -i -C 5 "error:" build_log.txt || tail -n 100 build_log.txt
+            
             exit 1
+          else
+            echo "=============================================="
+            echo "🎉 编译成功！"
+            echo "=============================================="
           fi
 
       - name: 7. 收集编译产物
