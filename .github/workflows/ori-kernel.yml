@@ -46,30 +46,29 @@ jobs:
           # 1. 为 Ubuntu 开启 32 位运行库支持
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          
-          # 2. 核心修复：将旧版 libncurses5:i386 替换为现代的 libncurses6:i386
           sudo apt-get install -y libc6:i386 libncurses6:i386 libstdc++6:i386 lib32z1
 
-          # 3. 建立兼容性符号链接：防止老工具链因找不到 libncurses.so.5 而罢工
+          # 2. 建立兼容性符号链接
           sudo ln -sf /usr/lib/i386-linux-gnu/libncurses.so.6 /usr/lib/i386-linux-gnu/libncurses.so.5
           sudo ln -sf /usr/lib/i386-linux-gnu/libtinfo.so.6 /usr/lib/i386-linux-gnu/libtinfo.so.5
 
-          # 4. 创建干净的本地存放目录
+          # 3. 创建干净的本地存放目录
           mkdir -p $GITHUB_WORKSPACE/llvm-toolchain
           mkdir -p $GITHUB_WORKSPACE/gcc-toolchain
 
-          # 5. 下载并解压 LLVM 工具链 (SDLLVM 10.0.9)
+          # 4. 下载并解压 LLVM 工具链 (彻底剥离最外层目录)
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz
-          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain --strip-components=1 2>/dev/null || tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain
+          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain --strip-components=1
 
-          # 6. 下载并解压配套的 GCC 4.9 工具链
+          # 5. 下载并解压配套的 GCC 4.9 工具链 (彻底剥离最外层目录)
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/aarch64-linux-android-4.9-Linux-5.4.tar.gz
-          tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain --strip-components=1 2>/dev/null || tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain
+          tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain --strip-components=1
 
-          # 7. 动态寻找 bin 目录并注入系统环境变量
-          LLVM_BIN=$(find $GITHUB_WORKSPACE/llvm-toolchain -type d -name "bin" | head -n 1)
-          GCC_BIN=$(find $GITHUB_WORKSPACE/gcc-toolchain -type d -name "bin" | head -n 1)
+          # 6. 精准指定 bin 路径（不再用 find 盲猜）
+          LLVM_BIN="$GITHUB_WORKSPACE/llvm-toolchain/bin"
+          GCC_BIN="$GITHUB_WORKSPACE/gcc-toolchain/bin"
 
+          # 7. 注入系统环境变量
           echo "$LLVM_BIN" >> $GITHUB_PATH
           echo "$GCC_BIN" >> $GITHUB_PATH
 
