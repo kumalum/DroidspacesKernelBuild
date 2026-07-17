@@ -14,48 +14,46 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
 
-      - name: 2. 克隆当前仓库 (用于获取 patches 目录)
-        uses: actions/checkout@v4
-
-      - name: 3. 克隆 LineageOS 索尼 SM6375 内核源码
+      - name: 2. 克隆 LineageOS 索尼 SM6375 内核源码 (分支 lineage-23.2)
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
 
-      - name: 4. 应用本地 patches 文件夹中的 DroidSpaces 补丁
+      - name: 3. 使用 sed 动态注入 DroidSpaces 必需的 kABI 豁免与结构体对齐
         run: |
           cd kernel-src
-          echo "==== 正在应用本地 001-fix_sysvipc.patch ===="
-          patch -p1 --verbose < ../patches/001-fix_sysvipc.patch
           
-          # 2. 使用 sed 对 include/linux/sched/user.h 进行“外科手术”修改，彻底避免 Hunk FAILED
-          echo "==== 正在通过 sed 注入 002 POSIX mqueue 修改 ===="
-          
-          # 我们需要将:
-          # #ifdef CONFIG_POSIX_MQUEUE
-          #     /* number of bytes allocated for memory backed mqueues */
-          #     unsigned long mq_bytes;    /* protected by mq_lock */
-          # #endif
-          # 
-          # 改造为：当未开启 POSIX_MQUEUE 时，保留 ANDROID_KABI_RESERVE(1) 占位；
-          # 开启时，用 mq_bytes 占用这个 reserve(1)，从而保持结构体总大小不变、不破坏 kABI。
-          
-          # 第一步：先将原本独立的 ANDROID_KABI_RESERVE(1); 替换为带有条件编译保护的代码
-          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
-          
-          # 第二步：将原有的 CONFIG_POSIX_MQUEUE 声明部分从 depends 限制中解脱出来（如果有的话）
-          # 这一步通常在 Kconfig 中，我们在第 5 步中已经通过 gki_defconfig 强制开启，因此只需确保 user.h 结构体对齐。
-          
-          echo "==== 检查修改后的 user.h 结构体尾部是否正确 ===="
-          git diff include/linux/sched/user.h         
+          echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
+          # 修改 init/Kconfig，移除 "depends on !ANDROID_KABI_RESERVE || EXPERT" 限制
+          sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
 
-      - name: 5. 修改 gki_defconfig 开启容器命名空间
+          echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
+          # 在 include/linux/sched.h 中，当开启 POSIX_MQUEUE 时释放 RESERVE(1) 占位
+          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
+
+          echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
+          # 修改 include/linux/sched/user.h 释放 RESERVE(1)
+          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
+
+          echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
+          # 替换 ipc/mqueue.c 中由于没有打 002 补丁可能导致的结构体指针错误
+          sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
+
+          echo "==== 验证代码动态修改情况 ===="
+          git diff include/linux/sched/user.h
+          git diff init/Kconfig
+
+      - name: 4. 修改 gki_defconfig 启用容器隔离命名空间
         run: |
           cd kernel-src
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          echo "==== 正在向 gki_defconfig 注入 DroidSpaces 必需配置 ===="
+          echo "==== 正在向 gki_defconfig 注入 DroidSpaces 必需内核参数 ===="
           cat <<EOF >> $DEFCONFIG
-          
+
           # === DroidSpaces Custom Configurations ===
           CONFIG_NAMESPACES=y
           CONFIG_PID_NS=y
@@ -67,21 +65,24 @@ jobs:
           # =========================================
           EOF
           
-          # 验证写入情况
+          # 打印 defconfig 尾部确保成功写入
           tail -n 12 $DEFCONFIG
 
-      - name: 6. 极速拉取 LineageOS 官方配套 Clang 编译器 (r416183b)
+      - name: 5. 极速拉取 LineageOS 官方配套 Clang 编译器 (r416183b)
         run: |
-          # 直接克隆 20.0 版本的官方预编译工具链， depth=1 保证不拉取历史记录，速度极快
+          # 直接克隆 20.0 版本的官方预编译工具链，避免 wget 400 错误
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
 
-      - name: 7. 执行内核编译
+      - name: 6. 执行内核编译 (使用 AOSP 交叉编译链)
         run: |
           cd kernel-src
+          
+          # 配置环境变量，指向我们刚克隆的 clang 编译链
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           
+          # 声明交叉编译链标记 (LLVM 工具集)
           MAKE_FLAGS="
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -96,25 +97,36 @@ jobs:
             STRIP=llvm-strip
           "
           
+          echo "==== 正在生成内核配置文件 ===="
           make $MAKE_FLAGS gki_defconfig
+          
+          echo "==== 开始多线程内核编译 ===="
           make -j$(nproc) $MAKE_FLAGS
 
-      - name: 8. 收集编译产物
+      - name: 7. 收集编译产物
         run: |
           mkdir -p out_artifacts
+          
+          # 收集内核核心镜像
           if [ -f kernel-src/arch/arm64/boot/Image.gz ]; then
             cp kernel-src/arch/arm64/boot/Image.gz out_artifacts/
+            echo "[+] 成功收集内核: Image.gz"
           elif [ -f kernel-src/arch/arm64/boot/Image ]; then
             cp kernel-src/arch/arm64/boot/Image out_artifacts/
+            echo "[+] 成功收集内核: Image"
           fi
           
+          # 收集设备树覆盖层 (dtbo.img - 高通平台刷写必需)
           if [ -f kernel-src/arch/arm64/boot/dtbo.img ]; then
             cp kernel-src/arch/arm64/boot/dtbo.img out_artifacts/
+            echo "[+] 成功收集设备树: dtbo.img"
           fi
           
+          # 收集编译生成的模块
           find kernel-src/ -name "*.ko" -exec cp {} out_artifacts/ \;
+          echo "[+] 内核外设驱动模块收集完毕"
 
-      - name: 9. 上传内核产物到 GitHub Actions
+      - name: 8. 上传编译包到本运行记录 (Artifacts)
         uses: actions/upload-artifact@v4
         with:
           name: Xperia-10IV-DroidSpaces-Kernel
