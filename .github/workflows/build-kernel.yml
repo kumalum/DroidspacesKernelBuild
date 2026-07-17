@@ -21,22 +21,27 @@ jobs:
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
       
-      - name: Fix rmnet_trace.h include path in techpack
+      - name: 2.5.5 修复高通 techpack datarmnet 找不到 rmnet_trace.h 的问题
         run: |
           
-          TARGET_MAKEFILE="kernel-src/techpack/datarmnet/core/rmnet_trace.h"
+          cd kernel-src 
           
-          if [ -f "$TRACE_HEADER" ]; then
-              echo "🔧 正在直接修改 $TRACE_HEADER 源码..."
+          # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
+          # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
+          if [ -d techpack/datarmnet/core ]; then
+            find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
+              # 修正宏定义路径
+              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
               
-              # 将 #define TRACE_INCLUDE_PATH . 修改为相对内核根目录的完整路径
-              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$TRACE_HEADER"
-              
-              echo "📝 检查修改后的关键行："
-              grep -A 2 "TRACE_INCLUDE_PATH" "$TRACE_HEADER"
-          else
-              echo "⚠️ 警告: 未找到 $TRACE_HEADER"
+              # 建立绝对路径软链接，防止编译器迷路
+              filename=$(basename "$header")
+              ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
+            done
           fi
+
+          echo "==== 验证高通网卡驱动批量修复情况 ===="
+          ls -l include/trace/rmnet_trace.h || true
+          ls -l include/trace/wda.h || true
 
       - name: 3. 自动应用 DroidSpaces 补丁与 KABI 智能修复
         run: |
