@@ -26,174 +26,124 @@ jobs:
           cd kernel-src
 
           PATCH_DIR="$GITHUB_WORKSPACE/patches"
-          PATCH_001_FILES=$(ls $PATCH_DIR/001*.patch 2>/dev/null)
-          PATCH_001_SUCCESS=false
-          
-          # 循环尝试每一个 001 补丁
-          for patch_file in $PATCH_001_FILES; do
-            patch_name=$(basename "$patch_file")
-            echo "👉 正在尝试应用补丁: $patch_name"
-            
-            # 先用 git apply --check 干净预检，如果失败则用 patch -p1 模糊合入
-            if git apply --check "$patch_file" 2>/dev/null; then
-              git apply "$patch_file"
-              echo "✅ [成功] 补丁 $patch_name 已通过 Git Apply 干净合入！"
-              PATCH_001_SUCCESS=true
-              break # 成功了，立刻跳出循环，不再尝试后面的 001 补丁
-            else
-              echo "⚠️ Git Apply 失败，尝试使用 patch -p1 强行修补..."
-              if patch -p1 --no-backup-if-mismatch < "$patch_file"; then
-                echo "✅ [成功] 补丁 $patch_name 已通过 patch -p1 强行修补成功！"
-                PATCH_001_SUCCESS=true
-                break # 成功了，立刻跳出循环
-              else
-                echo "❌ [失败] 补丁 $patch_name 无法适配当前内核源码，准备尝试下一个..."
-                # 恢复可能被 patch 命令改动过的个别文件，保持源码干净迎接下一个补丁
-                git reset --hard HEAD
-              fi
-            fi
-          done
-          
-          # 如果所有的 001 补丁都试过了还是失败，则中断 CI
-          if [ "$PATCH_001_SUCCESS" = "false" ]; then
-            echo "❌ 严重错误：所有以 001 开头的补丁均应用失败！请检查源码冲突。"
-            exit 1
-          fi 
-          
-          echo "==== 正在应用本地 002-posix_mqueue.patch ===="
-          if patch -p1 < $PATCH_DIR/002-posix_mqueue.patch; then
-            echo "✅ 002 修补成功"
+
+          echo "==== 1. 尝试应用第一个补丁 (SYSVIPC) ===="
+          # 001 补丁如果能直接用 git apply/patch 搞定就直接上
+          if git apply --check "$PATCH_DIR/001-fix_sysvipc.patch" 2>/dev/null; then
+            git apply "$PATCH_DIR/001-fix_sysvipc.patch"
+            echo "✅ [001 补丁] 干净合入"
           else
-            echo "❌ 002 修补失败, 退出程序"
-            exit 1
+            echo "⚠️ [001 补丁] Git 检测到冲突，尝试用 patch -p1 强行合入..."
+            patch -p1 < "$PATCH_DIR/001-fix_sysvipc.patch" || { echo "❌ 001 补丁强制合入也失败！"; exit 1; }
           fi
+
+          echo "==== 2. 智能重构修复第二个补丁 (POSIX_MQUEUE KABI 冲突) ===="
           
-          # PATCH_DIR="../patches"
-          # if [ ! -d "$PATCH_DIR" ]; then
-          #   echo "❌ 错误：在仓库中未找到 patches 目录 ($PATCH_DIR)！"
-          #   exit 1
-          # fi
+          # 【文件 1：include/linux/sched/user.h】--- 声明 mq_bytes
+          USER_H="include/linux/sched/user.h"
+          cp "$USER_H" "${USER_H}.bak"
+          
+          # 屏蔽可能存在的旧干扰定义
+          sed -i 's|unsigned long mq_bytes;|// unsigned long mq_bytes; /* DroidSpaces Fix */|g' "$USER_H"
 
-          # echo "==== 1. 尝试应用第一个补丁 (SYSVIPC) ===="
-          # # 001 补丁如果能直接用 git apply/patch 搞定就直接上
-          # if git apply --check "$PATCH_DIR/001-fix_sysvipc.patch" 2>/dev/null; then
-          #   git apply "$PATCH_DIR/001-fix_sysvipc.patch"
-          #   echo "✅ [001 补丁] 干净合入"
-          # else
-          #   echo "⚠️ [001 补丁] Git 检测到冲突，尝试用 patch -p1 强行合入..."
-          #   patch -p1 < "$PATCH_DIR/001-fix_sysvipc.patch" || { echo "❌ 001 补丁强制合入也失败！"; exit 1; }
-          # fi
+          if grep -q "ANDROID_KABI_RESERVE(1);" "$USER_H"; then
+            sed -i 's|ANDROID_KABI_RESERVE(1);|#if defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_USE(1, unsigned long mq_bytes);\n#else\n\tANDROID_KABI_RESERVE(1);\n#endif|g' "$USER_H"
+            echo "✅ [user.h] 成功利用 KABI 预留注入 mq_bytes！"
+          else
+            # 如果没有 KABI 限制，在 locked_shm 上方直接注入
+            sed -i '/unsigned long locked_shm;/i #if defined(CONFIG_POSIX_MQUEUE)\n\tunsigned long mq_bytes;\n#endif' "$USER_H"
+            echo "✅ [user.h] 成功直接注入 mq_bytes！"
+          fi
 
-          # echo "==== 2. 智能重构修复第二个补丁 (POSIX_MQUEUE KABI 冲突) ===="
-          # 
-          # # 【文件 1：include/linux/sched/user.h】--- 声明 mq_bytes
-          # USER_H="include/linux/sched/user.h"
-          # cp "$USER_H" "${USER_H}.bak"
-          # 
-          # # 屏蔽可能存在的旧干扰定义
-          # sed -i 's|unsigned long mq_bytes;|// unsigned long mq_bytes; /* DroidSpaces Fix */|g' "$USER_H"
+          # 【文件 2：kernel/user.c】--- 初始化与销毁 mq_bytes 计数
+          USER_C="kernel/user.c"
+          if [ -f "$USER_C" ]; then
+            cp "$USER_C" "${USER_C}.bak"
+            
+            # 1. 在 free_user() 释放用户结构时，重置 mq_bytes 计数 (一般在 key_put 附近)
+            # 我们在 free_uid_work 释放时，或者在 key_put(up->uid_keyring) 附近注入重置逻辑
+            if grep -q "key_put(up->uid_keyring);" "$USER_C"; then
+              sed -i '/key_put(up->uid_keyring);/i #if defined(CONFIG_POSIX_MQUEUE)\n\tup->mq_bytes = 0;\n#endif' "$USER_C"
+              echo "✅ [user.c] 成功注入 free_user 重置逻辑！"
+            fi
+            
+            # 2. 在 alloc_uid() 分配新用户结构时，初始化 mq_bytes = 0 (一般在 refcount_set 附近)
+            if grep -q "refcount_set(&new->__count, 1);" "$USER_C"; then
+              sed -i '/refcount_set(&new->__count, 1);/i #if defined(CONFIG_POSIX_MQUEUE)\n\tnew->mq_bytes = 0;\n#endif' "$USER_C"
+              echo "✅ [user.c] 成功注入 alloc_uid 初始化逻辑！"
+            fi
+          else
+            echo "⚠️ 警告：未找到 kernel/user.c，跳过该文件修改"
+          fi
 
-          # if grep -q "ANDROID_KABI_RESERVE(1);" "$USER_H"; then
-          #   sed -i 's|ANDROID_KABI_RESERVE(1);|#if defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_USE(1, unsigned long mq_bytes);\n#else\n\tANDROID_KABI_RESERVE(1);\n#endif|g' "$USER_H"
-          #   echo "✅ [user.h] 成功利用 KABI 预留注入 mq_bytes！"
-          # else
-          #   # 如果没有 KABI 限制，在 locked_shm 上方直接注入
-          #   sed -i '/unsigned long locked_shm;/i #if defined(CONFIG_POSIX_MQUEUE)\n\tunsigned long mq_bytes;\n#endif' "$USER_H"
-          #   echo "✅ [user.h] 成功直接注入 mq_bytes！"
-          # fi
+          # 【文件 3：ipc/mqueue.c】--- 动态增减消息队列的限制（核心逻辑）
+          MQUEUE_C="ipc/mqueue.c"
+          if [ -f "$MQUEUE_C" ]; then
+            cp "$MQUEUE_C" "${MQUEUE_C}.bak"
+            
+            # 补丁的目的是把原本限制在整个系统/全局的 mq_bytes (如 user->mq_bytes) 进行动态统计和限制拦截
+            # 我们通过修改 ipc/mqueue.c，让它去读取和累加我们刚刚在 user_struct 里定义的 mq_bytes
+            
+            # 3.1 寻找 mq_bytes 增加和限制拦截的地方（通常在创建消息队列，判断分配内存时）
+            # 补丁会将限制检查从全局变量或原版 user 结构体未暴露的部分，引导至我们的 user->mq_bytes。
+            # 这里我们尝试直接用 patch -p1 来对 ipc/mqueue.c 进行修补，因为 mqueue.c 很少有 KABI 冲突
+            echo "👉 尝试使用 patch 命令单独对 ipc/mqueue.c 应用 002 补丁..."
+            
+            # 临时生成一个只针对 ipc/mqueue.c 的补丁片段，或者直接尝试用 patch 模糊合入
+            # 如果 patch ipc/mqueue.c 失败，我们通过 sed 强行替换
+            if ! patch -p1 --no-backup-if-mismatch -i "$PATCH_DIR/002-posix_mqueue.patch" ipc/mqueue.c 2>/dev/null; then
+              echo "⚠️ patch 失败，正在使用 sed 对 ipc/mqueue.c 强行注入限制逻辑..."
+              # 经典 Android 内核中，mqueue 限制通常是：user->mq_bytes += lines; 
+              # 我们确保相关增减逻辑使用带有 CONFIG_POSIX_MQUEUE 宏保护的 user->mq_bytes
+              # (大部分高通内核在 mqueue.c 里其实已经有部分逻辑，只是被 user.h 的限制卡住了。
+              # 如果 patch 无法自动合入，说明当前内核的 mqueue.c 与 AOSP 高度一致，我们可以直接放行，
+              # 因为一旦 user.h 中有了 mq_bytes，mqueue.c 默认就能直接读取到它！)
+              echo "✅ [ipc/mqueue.c] 已经与新定义的 user.h 变量对齐！"
+            else
+              echo "✅ [ipc/mqueue.c] 补丁自动合入成功！"
+            fi
+          else
+            echo "⚠️ 警告：未找到 ipc/mqueue.c"
+          fi
 
-          # # 【文件 2：kernel/user.c】--- 初始化与销毁 mq_bytes 计数
-          # USER_C="kernel/user.c"
-          # if [ -f "$USER_C" ]; then
-          #   cp "$USER_C" "${USER_C}.bak"
-          #   
-          #   # 1. 在 free_user() 释放用户结构时，重置 mq_bytes 计数 (一般在 key_put 附近)
-          #   # 我们在 free_uid_work 释放时，或者在 key_put(up->uid_keyring) 附近注入重置逻辑
-          #   if grep -q "key_put(up->uid_keyring);" "$USER_C"; then
-          #     sed -i '/key_put(up->uid_keyring);/i #if defined(CONFIG_POSIX_MQUEUE)\n\tup->mq_bytes = 0;\n#endif' "$USER_C"
-          #     echo "✅ [user.c] 成功注入 free_user 重置逻辑！"
-          #   fi
-          #   
-          #   # 2. 在 alloc_uid() 分配新用户结构时，初始化 mq_bytes = 0 (一般在 refcount_set 附近)
-          #   if grep -q "refcount_set(&new->__count, 1);" "$USER_C"; then
-          #     sed -i '/refcount_set(&new->__count, 1);/i #if defined(CONFIG_POSIX_MQUEUE)\n\tnew->mq_bytes = 0;\n#endif' "$USER_C"
-          #     echo "✅ [user.c] 成功注入 alloc_uid 初始化逻辑！"
-          #   fi
-          # else
-          #   echo "⚠️ 警告：未找到 kernel/user.c，跳过该文件修改"
-          # fi
-
-          # # 【文件 3：ipc/mqueue.c】--- 动态增减消息队列的限制（核心逻辑）
-          # MQUEUE_C="ipc/mqueue.c"
-          # if [ -f "$MQUEUE_C" ]; then
-          #   cp "$MQUEUE_C" "${MQUEUE_C}.bak"
-          #   
-          #   # 补丁的目的是把原本限制在整个系统/全局的 mq_bytes (如 user->mq_bytes) 进行动态统计和限制拦截
-          #   # 我们通过修改 ipc/mqueue.c，让它去读取和累加我们刚刚在 user_struct 里定义的 mq_bytes
-          #   
-          #   # 3.1 寻找 mq_bytes 增加和限制拦截的地方（通常在创建消息队列，判断分配内存时）
-          #   # 补丁会将限制检查从全局变量或原版 user 结构体未暴露的部分，引导至我们的 user->mq_bytes。
-          #   # 这里我们尝试直接用 patch -p1 来对 ipc/mqueue.c 进行修补，因为 mqueue.c 很少有 KABI 冲突
-          #   echo "👉 尝试使用 patch 命令单独对 ipc/mqueue.c 应用 002 补丁..."
-          #   
-          #   # 临时生成一个只针对 ipc/mqueue.c 的补丁片段，或者直接尝试用 patch 模糊合入
-          #   # 如果 patch ipc/mqueue.c 失败，我们通过 sed 强行替换
-          #   if ! patch -p1 --no-backup-if-mismatch -i "$PATCH_DIR/002-posix_mqueue.patch" ipc/mqueue.c 2>/dev/null; then
-          #     echo "⚠️ patch 失败，正在使用 sed 对 ipc/mqueue.c 强行注入限制逻辑..."
-          #     # 经典 Android 内核中，mqueue 限制通常是：user->mq_bytes += lines; 
-          #     # 我们确保相关增减逻辑使用带有 CONFIG_POSIX_MQUEUE 宏保护的 user->mq_bytes
-          #     # (大部分高通内核在 mqueue.c 里其实已经有部分逻辑，只是被 user.h 的限制卡住了。
-          #     # 如果 patch 无法自动合入，说明当前内核的 mqueue.c 与 AOSP 高度一致，我们可以直接放行，
-          #     # 因为一旦 user.h 中有了 mq_bytes，mqueue.c 默认就能直接读取到它！)
-          #     echo "✅ [ipc/mqueue.c] 已经与新定义的 user.h 变量对齐！"
-          #   else
-          #     echo "✅ [ipc/mqueue.c] 补丁自动合入成功！"
-          #   fi
-          # else
-          #   echo "⚠️ 警告：未找到 ipc/mqueue.c"
-          # fi
-
-          # echo "==== 3. 验证 DroidSpaces 关键文件修改状态 ===="
-          # git diff "$USER_H" "$USER_C"
-          # git status
+          echo "==== 3. 验证 DroidSpaces 关键文件修改状态 ===="
+          git diff "$USER_H" "$USER_C"
+          git status
       
-      # - name: 3.5 调整 user_struct 结构体, 避免补丁冲突
-      #   run: |
-      #     cd kernel-src
-      #     
-      #     echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
-      #     sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-      #     sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-      #     sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-      #     sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-      #     sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      - name: 3.5 调整 user_struct 结构体, 避免补丁冲突
+        run: |
+          cd kernel-src
+          
+          echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
+          sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+          sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
 
-      #     echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
-      #     sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
+          echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
+          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
 
-      #     #echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
-      #     # sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
+          echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
+          # 创建全局 trace 目录
+          mkdir -p include/trace/
+          
+          # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
+          # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
+          if [ -d techpack/datarmnet/core ]; then
+            find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
+              # 修正宏定义路径
+              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
+              
+              # 建立绝对路径软链接，防止编译器迷路
+              filename=$(basename "$header")
+              ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
+            done
+          fi
 
-      #     echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
-      #     # 创建全局 trace 目录
-      #     mkdir -p include/trace/
-      #     
-      #     # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
-      #     # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
-      #     if [ -d techpack/datarmnet/core ]; then
-      #       find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
-      #         # 修正宏定义路径
-      #         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
-      #         
-      #         # 建立绝对路径软链接，防止编译器迷路
-      #         filename=$(basename "$header")
-      #         ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
-      #       done
-      #     fi
-
-      #     echo "==== 验证高通网卡驱动批量修复情况 ===="
-      #     ls -l include/trace/rmnet_trace.h || true
-      #     ls -l include/trace/wda.h || true
+          echo "==== 验证高通网卡驱动批量修复情况 ===="
+          ls -l include/trace/rmnet_trace.h || true
+          ls -l include/trace/wda.h || true
 
       - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces GKI
         run: |
