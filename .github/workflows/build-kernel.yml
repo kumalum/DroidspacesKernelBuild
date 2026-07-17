@@ -24,18 +24,18 @@ jobs:
       - name: Fix rmnet_trace.h include path in techpack
         run: |
           
-          TARGET_MAKEFILE="kernel-src/techpack/datarmnet/core/Makefile"
+          TARGET_MAKEFILE="kernel-src/techpack/datarmnet/core/rmnet_trace.h"
           
-          if [ -f "$TARGET_MAKEFILE" ]; then
-              echo "🔧 正在修复 $TARGET_MAKEFILE 中的包含路径..."
+          if [ -f "$TRACE_HEADER" ]; then
+              echo "🔧 正在直接修改 $TRACE_HEADER 源码..."
               
-              # 在 MODNAME 所在行的下一行插入 ccflags-y
-              sed -i '/MODNAME?=rmnet_core/a ccflags-y += -I\$(PWD)' "$TARGET_MAKEFILE"
+              # 将 #define TRACE_INCLUDE_PATH . 修改为相对内核根目录的完整路径
+              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$TRACE_HEADER"
               
-              echo "📝 修改后的 Makefile 内容："
-              cat "$TARGET_MAKEFILE"
+              echo "📝 检查修改后的关键行："
+              grep -A 2 "TRACE_INCLUDE_PATH" "$TRACE_HEADER"
           else
-              echo "⚠️ 警告: 未找到 $TARGET_MAKEFILE，请检查路径是否正确。"
+              echo "⚠️ 警告: 未找到 $TRACE_HEADER"
           fi
 
       - name: 3. 自动应用 DroidSpaces 补丁与 KABI 智能修复
