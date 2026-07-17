@@ -187,22 +187,22 @@ jobs:
           set_config "CONFIG_PID_NS" "y"
 
           # HW Access Support
-          set_config "CONFIG_DEVTMPFS" "y"
+          # set_config "CONFIG_DEVTMPFS" "y"
 
           # Networking (Enhanced NAT support)
-          set_config "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE" "y"
+          # set_config "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE" "y"
 
           # --- Optional but recommended configs ---
-          set_config "CONFIG_USER_NS" "y"
-          set_config "CONFIG_NETFILTER_XT_TARGET_REJECT" "y"
-          set_config "CONFIG_NETFILTER_XT_TARGET_LOG" "y"
-          set_config "CONFIG_NETFILTER_XT_MATCH_RECENT" "y"
+          # set_config "CONFIG_USER_NS" "y"
+          # set_config "CONFIG_NETFILTER_XT_TARGET_REJECT" "y"
+          # set_config "CONFIG_NETFILTER_XT_TARGET_LOG" "y"
+          # set_config "CONFIG_NETFILTER_XT_MATCH_RECENT" "y"
 
           # Fail2ban support
-          set_config "CONFIG_IP_SET" "y"
-          set_config "CONFIG_IP_SET_HASH_IP" "y"
-          set_config "CONFIG_IP_SET_HASH_NET" "y"
-          set_config "CONFIG_NETFILTER_XT_SET" "y"
+          # set_config "CONFIG_IP_SET" "y"
+          # set_config "CONFIG_IP_SET_HASH_IP" "y"
+          # set_config "CONFIG_IP_SET_HASH_NET" "y"
+          # set_config "CONFIG_NETFILTER_XT_SET" "y"
 
           # NixOS / tmpfs support
           # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
@@ -289,6 +289,7 @@ jobs:
       
       - name: 7. 收集最终产物
         run: |
+          
           mkdir -p out_artifacts
           
           # 1. 收集最新打包好的 boot-new.img
@@ -297,24 +298,12 @@ jobs:
             echo "[+] 成功收集最终镜像: boot-new.img"
           fi
           
-          # 2.收集内核核心镜像
-          if [ -f kernel-src/arch/arm64/boot/Image.gz ]; then
-            cp kernel-src/arch/arm64/boot/Image.gz out_artifacts/
-            echo "[+] 成功收集内核: Image.gz"
-          elif [ -f kernel-src/arch/arm64/boot/Image ]; then
-            cp kernel-src/arch/arm64/boot/Image out_artifacts/
-            echo "[+] 成功收集内核: Image"
-          fi
+          # 2. 收集内核本体 Image 以防万一
+          cp kernel-src/arch/arm64/boot/Image out_artifacts/Image_raw
           
-          # 3.收集设备树覆盖层 (dtbo.img - 高通平台刷写必需)
-          if [ -f kernel-src/arch/arm64/boot/dtbo.img ]; then
-            cp kernel-src/arch/arm64/boot/dtbo.img out_artifacts/
-            echo "[+] 成功收集设备树: dtbo.img"
-          fi
-          
-          # 4. 收集编译出来的驱动模块 (.ko 文件)
-          find kernel-src/out_artifacts/ -name "*.ko" -exec cp {} out_artifacts/ \;
-          echo "[+] 驱动模块收集完毕"
+          # 3. 收集编译出来的驱动模块 (.ko 文件)
+          # find out_artifacts/ -name "*.ko" -exec cp {} out_artifacts/ \;
+          # echo "[+] 驱动模块收集完毕"
 
       - name: 8. 上传编译包到本运行记录 (Artifacts)
         uses: actions/upload-artifact@v4
