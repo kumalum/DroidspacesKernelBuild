@@ -52,18 +52,18 @@ jobs:
           sudo ln -sf /usr/lib/i386-linux-gnu/libncurses.so.6 /usr/lib/i386-linux-gnu/libncurses.so.5
           sudo ln -sf /usr/lib/i386-linux-gnu/libtinfo.so.6 /usr/lib/i386-linux-gnu/libtinfo.so.5
 
-          # 3. 创建干净的本地存放目录
-          mkdir -p $GITHUB_WORKSPACE/llvm-toolchain
-          mkdir -p $GITHUB_WORKSPACE/gcc-toolchain
-
           # 4. 下载并解压 LLVM 工具链 (彻底剥离最外层目录)
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz
-          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain --strip-components=1
+          filename=$(tar -tf llvm-arm-toolchain-ship-10.0.9.tar.gz | awk 'NR==2 {print; exit}' | cut -d/ -f2)
+          tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C --strip-components=1
+          mv $filename llvm-toolchain
 
           # 5. 下载并解压配套的 GCC 4.9 工具链 (彻底剥离最外层目录)
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/aarch64-linux-android-4.9-Linux-5.4.tar.gz
-          tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain --strip-components=1
-
+          filename=$(tar -tf aarch64-linux-android-4.9-Linux-5.4.tar.gz | awk 'NR==2 {print; exit}' | cut -d/ -f2)
+          tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz --strip-components=1
+          mv $filename gcc-toolchain
+          
           # 6. 精准指定 bin 路径（不再用 find 盲猜）
           LLVM_BIN="$GITHUB_WORKSPACE/llvm-toolchain/bin"
           GCC_BIN="$GITHUB_WORKSPACE/gcc-toolchain/bin"
