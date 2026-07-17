@@ -87,54 +87,13 @@ jobs:
             echo "=============================================="
           fi
 
-      - name: 7. 恢复项目中自带 AIK-Linux 的执行权限
-        run: |
-          # 赋予所有脚本和二进制文件可执行权限
-          chmod +x AIK-Linux/unpackimg.sh AIK-Linux/repackimg.sh AIK-Linux/cleanup.sh AIK-Linux/bin/linux/x86_64/*
-      
-      - name: 8. 自动解包原本的 boot.img 并替换新内核
-        run: |
-          # 1. 清理 AIK 残留，并将 boot 解包
-          cd AIK-Linux
-          ./cleanup.sh
-          ./unpackimg.sh boot.img
-
-          # 2. 用刚刚编译出来的 Image 替换解包后的内核文件
-          # 编译出的 Image 路径位于 ../kernel-src/arch/arm64/boot/Image
-          NEW_KERNEL="$GITHUB_WORKSPACE/kernel-src/arch/arm64/boot/Image"
-          if [ -f "$NEW_KERNEL" ]; then
-            cp "$NEW_KERNEL" split_img/boot.img-kernel
-            echo "✅ 成功将新编译的内核 Image 替换进 split_img/"
-          else
-            echo "❌ 错误：未找到编译生成的内核本体 Image 文件！"
-            exit 1
-          fi
-
-          # 4. 重新打包生成新镜像 image-new.img
-          ./repackimg.sh
-          
-          # 5. 将新生成的 boot.img 移动到外层准备收集
-          cp image-new.img ../boot-new.img
-          ./cleanup.sh
-          echo "🎉 新 boot 镜像打包成功: boot-new.img"
-      
       - name: 7. 收集最终产物
         run: |
           
           mkdir -p out_artifacts
-          
-          # 1. 收集最新打包好的 boot-new.img
-          if [ -f "boot-new.img" ]; then
-            cp boot-new.img out_artifacts/
-            echo "[+] 成功收集最终镜像: boot-new.img"
-          fi
-          
           # 2. 收集内核本体 Image 以防万一
           cp kernel-src/arch/arm64/boot/Image out_artifacts/Image_raw
           
-          # 3. 收集编译出来的驱动模块 (.ko 文件)
-          # find out_artifacts/ -name "*.ko" -exec cp {} out_artifacts/ \;
-          # echo "[+] 驱动模块收集完毕"
 
       - name: 8. 上传编译包到本运行记录 (Artifacts)
         uses: actions/upload-artifact@v4
