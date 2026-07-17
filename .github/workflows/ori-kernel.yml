@@ -43,24 +43,30 @@ jobs:
 
       - name: 4. 环境补全与下载配置联合工具链 (LLVM + GCC 4.9)
         run: |
-          # 1. 核心修复：为 Ubuntu Actions 虚拟机开启 32 位运行库支持（防止 SDLLVM 爆 127 错误）
+          # 1. 为 Ubuntu 开启 32 位运行库支持
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y libc6:i386 libncurses5:i386 libstdc++6:i386 lib32z1
+          
+          # 2. 核心修复：将旧版 libncurses5:i386 替换为现代的 libncurses6:i386
+          sudo apt-get install -y libc6:i386 libncurses6:i386 libstdc++6:i386 lib32z1
 
-          # 2. 创建干净的本地存放目录
+          # 3. 建立兼容性符号链接：防止老工具链因找不到 libncurses.so.5 而罢工
+          sudo ln -sf /usr/lib/i386-linux-gnu/libncurses.so.6 /usr/lib/i386-linux-gnu/libncurses.so.5
+          sudo ln -sf /usr/lib/i386-linux-gnu/libtinfo.so.6 /usr/lib/i386-linux-gnu/libtinfo.so.5
+
+          # 4. 创建干净的本地存放目录
           mkdir -p $GITHUB_WORKSPACE/llvm-toolchain
           mkdir -p $GITHUB_WORKSPACE/gcc-toolchain
 
-          # 3. 下载并解压 LLVM 工具链 (SDLLVM 10.0.9)
+          # 5. 下载并解压 LLVM 工具链 (SDLLVM 10.0.9)
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz
           tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain --strip-components=1 2>/dev/null || tar -zxf llvm-arm-toolchain-ship-10.0.9.tar.gz -C $GITHUB_WORKSPACE/llvm-toolchain
 
-          # 4. 下载并解压配套的 GCC 4.9 工具链
+          # 6. 下载并解压配套的 GCC 4.9 工具链
           wget -q https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/aarch64-linux-android-4.9-Linux-5.4.tar.gz
           tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain --strip-components=1 2>/dev/null || tar -zxf aarch64-linux-android-4.9-Linux-5.4.tar.gz -C $GITHUB_WORKSPACE/gcc-toolchain
 
-          # 5. 动态寻找 bin 目录并注入系统环境变量 (确保不管怎么套娃都能找到)
+          # 7. 动态寻找 bin 目录并注入系统环境变量
           LLVM_BIN=$(find $GITHUB_WORKSPACE/llvm-toolchain -type d -name "bin" | head -n 1)
           GCC_BIN=$(find $GITHUB_WORKSPACE/gcc-toolchain -type d -name "bin" | head -n 1)
 
