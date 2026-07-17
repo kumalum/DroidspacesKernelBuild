@@ -31,7 +31,13 @@ jobs:
           patch -p1 < 001-fix_sysvipc.patch
           
           echo "==== 正在应用 002 POSIX Queue 补丁 ===="
-          patch -p1 < 002-posix_mqueue.patch
+          if patch -p1 < 002-posix_mqueue.patch > /dev/null; then
+            :
+          else
+            echo "==== 输出user.h.rej ===="
+            cat include/linux/sched/user.h.rej
+            exit 1
+          fi
 
 
       - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces GKI
