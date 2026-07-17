@@ -21,50 +21,56 @@ jobs:
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
       
-      - name: 3. 自动应用 patches 目录下的 DroidSpaces 补丁
+      - name: 3. 自动应用 DroidSpaces 补丁与 KABI 智能修复
         run: |
           cd kernel-src
           
-          # 1. 确保 patches 目录存在
           PATCH_DIR="../patches"
           if [ ! -d "$PATCH_DIR" ]; then
             echo "❌ 错误：在仓库中未找到 patches 目录 ($PATCH_DIR)！"
             exit 1
           fi
 
-          echo "==== 开始按顺序应用 DroidSpaces 补丁 ===="
+          echo "==== 1. 尝试应用第一个补丁 (SYSVIPC) ===="
+          # 001 补丁如果能直接用 git apply/patch 搞定就直接上
+          if git apply --check "$PATCH_DIR/001-fix_sysvipc.patch" 2>/dev/null; then
+            git apply "$PATCH_DIR/001-fix_sysvipc.patch"
+            echo "✅ [001 补丁] 干净合入"
+          else
+            echo "⚠️ [001 补丁] Git 检测到冲突，尝试用 patch -p1 强行合入..."
+            patch -p1 < "$PATCH_DIR/001-fix_sysvipc.patch" || { echo "❌ 001 补丁强制合入也失败！"; exit 1; }
+          fi
+
+          echo "==== 2. 智能重构修复第二个补丁 (POSIX_MQUEUE KABI 冲突) ===="
+          USER_H="include/linux/sched/user.h"
           
-          apply_patch() {
-            local patch_file="$1"
-            echo "👉 正在尝试应用补丁: $(basename "$patch_file")"
-            
-            # 首先尝试使用标准的 git apply 干净地应用
-            if git apply --check "$patch_file" 2>/dev/null; then
-              git apply "$patch_file"
-              echo "✅ [Git Apply 成功] $(basename "$patch_file") 已成功应用"
-            else
-              echo "⚠️ Git Apply 检测到冲突，正在尝试使用 patch -p1 强制模糊修补..."
-              # 如果 git apply 失败，使用 patch -p1 强行合入（对行号轻微偏移更宽容）
-              if patch -p1 < "$patch_file"; then
-                echo "✅ [Patch 强行合入成功] $(basename "$patch_file") 已强行修补"
-              else
-                echo "❌ [严重错误] 补丁 $(basename "$patch_file") 应用彻底失败！请检查源码冲突！"
-                exit 1
-              fi
-            fi
-          }
+          # 备份原文件以防万一
+          cp "$USER_H" "${USER_H}.bak"
 
-          # 按名称排序，依次应用 001 和 002 补丁
-          apply_patch "$PATCH_DIR/001-fix_sysvipc.patch"
-          apply_patch "$PATCH_DIR/002-posix_mqueue.patch"
+          # 检查原文件里有没有 CONFIG_POSIX_MQUEUE 相关的干扰定义并先将其注释/清理，防止重定义冲突
+          # Android 内核往往把 mq_bytes 丢在 CONFIG_POSIX_MQUEUE 宏里，我们先用注释避开
+          sed -i 's|unsigned long mq_bytes;|// unsigned long mq_bytes; /* DroidSpaces Fix */|g' "$USER_H"
 
-          echo "==== 验证补丁应用后的代码状态 ===="
+          # 寻找 KABI 预留标志，将 ANDROID_KABI_RESERVE(1) 巧妙替换为使用 KABI 空间的 mq_bytes 定义
+          # 这样既启用了变量，又绝对不会破坏原本的 kABI 内存布局
+          if grep -q "ANDROID_KABI_RESERVE(1);" "$USER_H"; then
+            sed -i 's|ANDROID_KABI_RESERVE(1);|#if defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_USE(1, unsigned long mq_bytes);\n#else\n\tANDROID_KABI_RESERVE(1);\n#endif|g' "$USER_H"
+            echo "✅ [KABI 修复] 成功利用 ANDROID_KABI_USE(1, ...) 注入 mq_bytes 成员！"
+          else
+            # 如果没有找到 KABI 宏（说明是较老或未强制 KABI 的内核），则直接在合适位置补齐
+            echo "⚠️ 未在 user.h 中发现 KABI 限制，正在执行直接注入机制..."
+            # 在 locked_shm 上方注入
+            sed -i '/unsigned long locked_shm;/i #if defined(CONFIG_POSIX_MQUEUE)\n\tunsigned long mq_bytes;\n#endif' "$USER_H"
+            echo "✅ [传统修复] 成功直接注入 mq_bytes！"
+          fi
+
+          echo "==== 3. 验证代码修改状态 ===="
+          git diff "$USER_H"
           git status
-          git diff --stat
       
-      - name: 3.5 调整 user_struct 结构体, 避免补丁冲突
-        run: |
-          cd kernel-src
+      # - name: 3.5 调整 user_struct 结构体, 避免补丁冲突
+      #   run: |
+      #     cd kernel-src
           
           # echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
           # sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
@@ -76,8 +82,8 @@ jobs:
           # echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
           # sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
 
-          echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
-          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
+          # echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
+          # sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
 
           # echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
           # sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
@@ -103,8 +109,8 @@ jobs:
           # ls -l include/trace/rmnet_trace.h || true
           # ls -l include/trace/wda.h || true
           
-          echo "==== 验证代码动态修改情况 ===="
-          git diff include/linux/sched/user.h || true
+          # echo "==== 验证代码动态修改情况 ===="
+          # git diff include/linux/sched/user.h || true
 
       - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces GKI
         run: |
