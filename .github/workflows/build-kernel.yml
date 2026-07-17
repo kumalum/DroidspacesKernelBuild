@@ -1,0 +1,120 @@
+name: Build Xperia 10 IV DroidSpaces Kernel
+
+on:
+  workflow_dispatch: # 支持在 GitHub 页面手动点击运行
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. 优化磁盘空间并安装构建依赖
+        run: |
+          sudo docker image prune -a -f
+          sudo docker container prune -f
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+
+      - name: 2. 克隆 LineageOS 索尼 SM6375 内核源码
+        run: |
+          git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
+
+      - name: 3. 下载 DroidSpaces GKI 5.4 必备补丁
+        run: |
+          cd kernel-src
+          # 下载 001 补丁 (修复 SYSVIPC 破坏 kABI 结构体的问题，GKI 5.4 通常使用 6_7_8 或 3_4_5，这里先使用 6_7_8)
+          curl -Lo 001-fix_sysvipc.patch https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kABI_6_7_8.patch
+          
+          # 下载 002 补丁 (5.10 及以下内核必打的 POSIX queue 补丁)
+          curl -Lo 002-posix_mqueue.patch https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/002.5.10_or_lower_use_android_abi_padding_for_posix_mqueue.patch
+
+      - name: 4. 应用 DroidSpaces 补丁
+        run: |
+          cd kernel-src
+          echo "==== 正在应用 001 kABI 修复补丁 ===="
+          patch -p1 < 001-fix_sysvipc.patch
+          
+          echo "==== 正在应用 002 POSIX Queue 补丁 ===="
+          patch -p1 < 002-posix_mqueue.patch
+
+      - name: 5. 修改 gki_defconfig 开启容器命名空间
+        run: |
+          cd kernel-src
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          
+          echo "==== 正在向 gki_defconfig 注入 DroidSpaces 必需配置 ===="
+          cat <<EOF >> $DEFCONFIG
+          
+          # === DroidSpaces Custom Configurations ===
+          CONFIG_NAMESPACES=y
+          CONFIG_PID_NS=y
+          CONFIG_IPC_NS=y
+          CONFIG_UTS_NS=y
+          CONFIG_SYSVIPC=y
+          CONFIG_POSIX_MQUEUE=y
+          CONFIG_SECCOMP=y
+          # =========================================
+          EOF
+          
+          # 验证写入情况
+          tail -n 12 $DEFCONFIG
+
+      - name: 6. 下载 Google 官方 AOSP Clang 编译器
+        run: |
+          mkdir clang
+          cd clang
+          # 下载 Android 13/14/15 编译内核通用的 Clang r450784d (或更高版本)
+          curl -Lo clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r450784d.tar.gz
+          tar -xzf clang.tar.gz
+          rm -f clang.tar.gz
+
+      - name: 7. 执行内核编译
+        run: |
+          cd kernel-src
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
+          # 配置交叉编译环境变量
+          MAKE_FLAGS="
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            READELF=llvm-readelf \
+            STRIP=llvm-strip
+          "
+          
+          # 1. 生成配置文件
+          make $MAKE_FLAGS gki_defconfig
+          
+          # 2. 开始多线程编译
+          make -j$(nproc) $MAKE_FLAGS
+
+      - name: 8. 收集编译产物
+        run: |
+          mkdir -p out_artifacts
+          # 提取内核镜像
+          if [ -f kernel-src/arch/arm64/boot/Image.gz ]; then
+            cp kernel-src/arch/arm64/boot/Image.gz out_artifacts/
+          elif [ -f kernel-src/arch/arm64/boot/Image ]; then
+            cp kernel-src/arch/arm64/boot/Image out_artifacts/
+          fi
+          
+          # 提取设备树（DTBO，高通平台刷入必带）
+          if [ -f kernel-src/arch/arm64/boot/dtbo.img ]; then
+            cp kernel-src/arch/arm64/boot/dtbo.img out_artifacts/
+          fi
+          
+          # 顺便收集编译出来的内核模块 (如有)
+          find kernel-src/ -name "*.ko" -exec cp {} out_artifacts/ \;
+
+      - name: 9. 上传内核产物到 GitHub Releases/Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xperia-10IV-DroidSpaces-Kernel
+          path: out_artifacts/*
