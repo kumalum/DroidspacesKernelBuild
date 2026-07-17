@@ -77,31 +77,29 @@ jobs:
         run: |
           cd kernel-src
           
-          # 配置环境变量，指向我们刚克隆的 clang 编译链
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          export ARCH=arm64
-          export SUBARCH=arm64
+          # 1. 彻底清理之前残留的编译产物
+          make mrproper
           
-          # 声明交叉编译链标记 (LLVM 工具集)
-          MAKE_FLAGS="
+          # 2. 生成默认配置文件
+          make ARCH=arm64 gki_defconfig
+          
+          # 3. 开始多线程编译
+          # 使用 LLVM=1 和 LLVM_IAS=1 告诉 Makefile 使用 clang 而不是 gcc
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make -j$(nproc) ARCH=arm64 \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            READELF=llvm-readelf \
-            STRIP=llvm-strip
-          "
+            LLVM=1 \
+            LLVM_IAS=1 \
+            | tee build_log.txt  # 将日志保存到文件，方便后面查看
           
-          echo "==== 正在生成内核配置文件 ===="
-          make $MAKE_FLAGS gki_defconfig
-          
-          echo "==== 开始多线程内核编译 ===="
-          make -j$(nproc) $MAKE_FLAGS
+          # 4. 如果上面的命令返回了非 0 状态码，打印最后 50 行日志并强制报错退出
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "==== 编译失败，打印最后 50 行日志 ===="
+            tail -n 50 build_log.txt
+            exit 1
+          fi
 
       - name: 7. 收集编译产物
         run: |
