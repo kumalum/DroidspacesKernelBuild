@@ -27,8 +27,26 @@ jobs:
           echo "==== 正在应用本地 001-fix_sysvipc.patch ===="
           patch -p1 --verbose < ../patches/001-fix_sysvipc.patch
           
-          echo "==== 正在应用本地 002-posix_mqueue.patch ===="
-          patch -p1 --verbose < ../patches/002-posix_mqueue.patch
+          # 2. 使用 sed 对 include/linux/sched/user.h 进行“外科手术”修改，彻底避免 Hunk FAILED
+          echo "==== 正在通过 sed 注入 002 POSIX mqueue 修改 ===="
+          
+          # 我们需要将:
+          # #ifdef CONFIG_POSIX_MQUEUE
+          #     /* number of bytes allocated for memory backed mqueues */
+          #     unsigned long mq_bytes;    /* protected by mq_lock */
+          # #endif
+          # 
+          # 改造为：当未开启 POSIX_MQUEUE 时，保留 ANDROID_KABI_RESERVE(1) 占位；
+          # 开启时，用 mq_bytes 占用这个 reserve(1)，从而保持结构体总大小不变、不破坏 kABI。
+          
+          # 第一步：先将原本独立的 ANDROID_KABI_RESERVE(1); 替换为带有条件编译保护的代码
+          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
+          
+          # 第二步：将原有的 CONFIG_POSIX_MQUEUE 声明部分从 depends 限制中解脱出来（如果有的话）
+          # 这一步通常在 Kconfig 中，我们在第 5 步中已经通过 gki_defconfig 强制开启，因此只需确保 user.h 结构体对齐。
+          
+          echo "==== 检查修改后的 user.h 结构体尾部是否正确 ===="
+          git diff include/linux/sched/user.h         
 
       - name: 5. 修改 gki_defconfig 开启容器命名空间
         run: |
