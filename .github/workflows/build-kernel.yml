@@ -34,10 +34,64 @@ jobs:
           if patch -p1 < 002-posix_mqueue.patch > /dev/null; then
             :
           else
-            echo "==== 输出user.h.rej ===="
-            cat include/linux/sched/user.h.rej
-            exit 1
-          fi
+            TARGET_FILE="include/linux/sched/user.h"
+            
+            sed -i '/struct ratelimit_state ratelimit;/ {
+                n
+                /ANDROID_KABI_RESERVE(1);/ {
+                    n
+                    /ANDROID_KABI_RESERVE(2);/ {
+                        n
+                        /ANDROID_OEM_DATA_ARRAY(1, 2);/ {
+                            # 匹配到了连续的三行，执行替换
+                            i\
+            #if defined(CONFIG_POSIX_MQUEUE)\
+            \tANDROID_KABI_USE(1, unsigned long mq_bytes);\
+            \tANDROID_KABI_RESERVE(2);\
+            \tANDROID_OEM_DATA_ARRAY(1, 2);\
+            #else\
+            \tANDROID_KABI_RESERVE(1);\
+            \tANDROID_KABI_RESERVE(2);\
+            \tANDROID_OEM_DATA_ARRAY(1, 2);\
+            #endif
+                            d
+                        }
+                    }
+                }
+            }' "$TARGET_FILE"
+            
+            # 上面的精确匹配如果因为空格/缩进失败，以下提供一个更强力的后备替换方案（针对标准缩进）
+            if ! grep -q "CONFIG_POSIX_MQUEUE" "$TARGET_FILE"; then
+                echo "⚠️ 精确匹配未成功，尝试执行结构体块替换..."
+                
+                # 备份原文件
+                cp "$TARGET_FILE" "${TARGET_FILE}.bak"
+                
+                # 使用 Python 或更简单的 sed 直接整块替换（这里用不依赖环境的 sed 替换大法）
+                # 寻找 ratelimit 后面接 KABI_RESERVE 的部分进行直接重写
+                sed -i '/struct ratelimit_state ratelimit;/,/ANDROID_OEM_DATA_ARRAY(1, 2);/c\
+            \tstruct ratelimit_state ratelimit;\
+            #if defined(CONFIG_POSIX_MQUEUE)\
+            \tANDROID_KABI_USE(1, unsigned long mq_bytes);\
+            \tANDROID_KABI_RESERVE(2);\
+            \tANDROID_OEM_DATA_ARRAY(1, 2);\
+            #else\
+            \tANDROID_KABI_RESERVE(1);\
+            \tANDROID_KABI_RESERVE(2);\
+            \tANDROID_OEM_DATA_ARRAY(1, 2);\
+            #endif' "$TARGET_FILE"
+            fi
+            
+            # 4. 验证最终结果
+            if grep -q "CONFIG_POSIX_MQUEUE" "$TARGET_FILE"; then
+                echo "✅ 修复成功！"
+                # 清理可能残留的补丁拒绝文件
+                [ -f "${TARGET_FILE}.rej" ] && rm "${TARGET_FILE}.rej"
+                [ -f "${TARGET_FILE}.bak" ] && rm "${TARGET_FILE}.bak"
+            else
+                echo "❌ 修复失败，文件缩进或内容可能与预期不符，建议通过 'git diff' 或手动检查。"
+            fi
+        fi
 
 
       - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces GKI
