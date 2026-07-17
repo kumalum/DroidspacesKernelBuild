@@ -17,50 +17,91 @@ jobs:
       - name: 2. 克隆 LineageOS 索尼 SM6375 内核源码 (分支 lineage-23.2)
         run: |
           git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
-
-      - name: 3. 使用 sed 动态注入 DroidSpaces 必需的 kABI 豁免与结构体对齐, (暂不修改 高通的 techpack datarmnet 路径问题)
+      
+      - name: 2.5 自动应用 patches 目录下的 DroidSpaces 补丁
         run: |
           cd kernel-src
           
-          echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
-          sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-          sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
-
-          echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
-          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
-
-          echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
-          sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
-
-          echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
-          sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
-
-          echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
-          # 创建全局 trace 目录
-          mkdir -p include/trace/
-          
-          # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
-          # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
-          if [ -d techpack/datarmnet/core ]; then
-            find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
-              # 修正宏定义路径
-              sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
-              
-              # 建立绝对路径软链接，防止编译器迷路
-              filename=$(basename "$header")
-              ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
-            done
+          # 1. 确保 patches 目录存在
+          PATCH_DIR="$GITHUB_WORKSPACE/patches"
+          if [ ! -d "$PATCH_DIR" ]; then
+            echo "❌ 错误：在仓库中未找到 patches 目录 ($PATCH_DIR)！"
+            exit 1
           fi
 
-          echo "==== 验证高通网卡驱动批量修复情况 ===="
-          ls -l include/trace/rmnet_trace.h || true
-          ls -l include/trace/wda.h || true
+          echo "==== 开始按顺序应用 DroidSpaces 补丁 ===="
           
-          echo "==== 验证代码动态修改情况 ===="
-          git diff include/linux/sched/user.h || true
+          apply_patch() {
+            local patch_file="$1"
+            echo "👉 正在尝试应用补丁: $(basename "$patch_file")"
+            
+            # 首先尝试使用标准的 git apply 干净地应用
+            if git apply --check "$patch_file" 2>/dev/null; then
+              git apply "$patch_file"
+              echo "✅ [Git Apply 成功] $(basename "$patch_file") 已成功应用"
+            else
+              echo "⚠️ Git Apply 检测到冲突，正在尝试使用 patch -p1 强制模糊修补..."
+              # 如果 git apply 失败，使用 patch -p1 强行合入（对行号轻微偏移更宽容）
+              if patch -p1 < "$patch_file"; then
+                echo "✅ [Patch 强行合入成功] $(basename "$patch_file") 已强行修补"
+              else
+                echo "❌ [严重错误] 补丁 $(basename "$patch_file") 应用彻底失败！请检查源码冲突！"
+                exit 1
+              fi
+            fi
+          }
+
+          # 按名称排序，依次应用 001 和 002 补丁
+          apply_patch "$PATCH_DIR/001-fix_sysvipc.patch"
+          apply_patch "$PATCH_DIR/002-posix_mqueue.patch"
+
+          echo "==== 验证补丁应用后的代码状态 ===="
+          git status
+          git diff --stat
+      
+      # - name: 3. 使用 sed 动态注入 DroidSpaces 必需的 kABI 豁免与结构体对齐, (暂不修改 高通的 techpack datarmnet 路径问题)
+      #   run: |
+      #     cd kernel-src
+      #     
+      #     echo "==== 1. 绕过 Kconfig 中对 NAMESPACES 和 SYSVIPC 的 kABI 限制 ===="
+      #     sed -i '/config SYSVIPC/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config SYSVIPC_SYSCTL/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config IPC_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config PID_NS/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+      #     sed -i '/config POSIX_MQUEUE/,/config/ { /depends on !ANDROID_KABI_RESERVE/d }' init/Kconfig
+
+      #     echo "==== 2. 修改 sched.h 以兼容 POSIX_MQUEUE 的 kABI 预留 ===="
+      #     sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched.h
+
+      #     echo "==== 3. 动态调整 user_struct 结构体避免 002 补丁冲突 ===="
+      #     sed -i 's/ANDROID_KABI_RESERVE(1);/#if !defined(CONFIG_POSIX_MQUEUE)\n\tANDROID_KABI_RESERVE(1);\n#endif/' include/linux/sched/user.h
+
+      #     echo "==== 4. 动态调整 mqueue.c 兼容代码 ===="
+      #     sed -i 's/current->fs = sh->saved_fs;/current->fs = current->nsproxy->mnt_ns->root->mnt->mnt_sb->s_fs_info;/g' ipc/mqueue.c
+
+      #     echo "==== 5. 【降维打击】批量打包修复高通 techpack datarmnet 路径问题 ===="
+      #     # 创建全局 trace 目录
+      #     mkdir -p include/trace/
+      #     
+      #     # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
+      #     # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
+      #     if [ -d techpack/datarmnet/core ]; then
+      #       find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
+      #         # 修正宏定义路径
+      #         sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
+      #         
+      #         # 建立绝对路径软链接，防止编译器迷路
+      #         filename=$(basename "$header")
+      #         ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
+      #       done
+      #     fi
+
+      #     echo "==== 验证高通网卡驱动批量修复情况 ===="
+      #     ls -l include/trace/rmnet_trace.h || true
+      #     ls -l include/trace/wda.h || true
+      #     
+      #     echo "==== 验证代码动态修改情况 ===="
+      #     git diff include/linux/sched/user.h || true
 
       - name: 4. 智能检索并替换 gki_defconfig 满足 DroidSpaces GKI
         run: |
@@ -166,12 +207,54 @@ jobs:
             echo "🎉 编译成功！所有内核与驱动模块链接完毕！"
             echo "=============================================="
           fi
+      - name: 7. 恢复项目中自带 AIK-Linux 的执行权限
+        run: |
+          # 赋予所有脚本和二进制文件可执行权限
+          chmod +x AIK-Linux/unpackimg.sh AIK-Linux/repackimg.sh AIK-Linux/cleanup.sh AIK-Linux/bin/linux/x86_64/*
+      - name: 8. 自动解包原本的 boot.img 并替换新内核
+        run: |
+          # 1. 检查项目根目录下是否存在原厂 boot.img
+          if [ ! -f "boot.img" ]; then
+            echo "❌ 错误：未在项目根目录下找到用于替换的 boot.img 文件！"
+            echo "💡 请将你手机原本可正常开机的 boot.img 命名为 boot.img，并放入 GitHub 仓库根目录后再运行。"
+            exit 1
+          fi
 
-      - name: 7. 收集编译产物
+          # 2. 清理 AIK 残留，并将 boot 解包
+          cd AIK-Linux
+          ./cleanup.sh
+          ./unpackimg.sh boot.img
+
+          # 3. 用刚刚编译出来的 Image 替换解包后的内核文件
+          # 编译出的 Image 路径位于 ../kernel-src/arch/arm64/boot/Image
+          NEW_KERNEL="$GITHUB_WORKSPACE/kernel-src/arch/arm64/boot/Image"
+          if [ -f "$NEW_KERNEL" ]; then
+            cp "$NEW_KERNEL" split_img/boot.img-kernel
+            echo "✅ 成功将新编译的内核 Image 替换进 split_img/"
+          else
+            echo "❌ 错误：未找到编译生成的内核本体 Image 文件！"
+            exit 1
+          fi
+
+          # 4. 重新打包生成新镜像 image-new.img
+          ./repackimg.sh
+          
+          # 5. 将新生成的 boot.img 移动到外层准备收集
+          cp image-new.img ../boot-new.img
+          ./cleanup.sh
+          echo "🎉 新 boot 镜像打包成功: boot-new.img"
+      
+      - name: 7. 收集最终产物
         run: |
           mkdir -p out_artifacts
           
-          # 收集内核核心镜像
+          # 1. 收集最新打包好的 boot-new.img
+          if [ -f "boot-new.img" ]; then
+            cp boot-new.img out_artifacts/
+            echo "[+] 成功收集最终镜像: boot-new.img"
+          fi
+          
+          # 2.收集内核核心镜像
           if [ -f kernel-src/arch/arm64/boot/Image.gz ]; then
             cp kernel-src/arch/arm64/boot/Image.gz out_artifacts/
             echo "[+] 成功收集内核: Image.gz"
@@ -180,15 +263,15 @@ jobs:
             echo "[+] 成功收集内核: Image"
           fi
           
-          # 收集设备树覆盖层 (dtbo.img - 高通平台刷写必需)
+          # 3.收集设备树覆盖层 (dtbo.img - 高通平台刷写必需)
           if [ -f kernel-src/arch/arm64/boot/dtbo.img ]; then
             cp kernel-src/arch/arm64/boot/dtbo.img out_artifacts/
             echo "[+] 成功收集设备树: dtbo.img"
           fi
           
-          # 收集编译生成的模块
-          find kernel-src/ -name "*.ko" -exec cp {} out_artifacts/ \;
-          echo "[+] 内核外设驱动模块收集完毕"
+          # 4. 收集编译出来的驱动模块 (.ko 文件)
+          find kernel-src/out_artifacts/ -name "*.ko" -exec cp {} out_artifacts/ \;
+          echo "[+] 驱动模块收集完毕"
 
       - name: 8. 上传编译包到本运行记录 (Artifacts)
         uses: actions/upload-artifact@v4
