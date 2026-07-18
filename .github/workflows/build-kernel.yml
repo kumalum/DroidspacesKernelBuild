@@ -5,8 +5,9 @@ on:
 
 env:
   # clang 编译器选择 google lineage
-  CLANG: ""
-  LLVM: 0
+  CLANG: false
+  CLANG_NAME = ""
+  LLVM: true
 
 jobs:
   build:
@@ -27,7 +28,7 @@ jobs:
           path: 'droidspaces_kernel'
       
       - name: lineage-clang
-        if: env.CLANG == 'lineage'
+        if: env.CLANG && env.CLANG_NAME == 'lineage'
         uses: actions/checkout@v4
         with:
           # 别人的仓库名（格式：用户名/仓库名）
@@ -38,7 +39,7 @@ jobs:
           path: 'clang'
 
       - name: google-clang
-        if: env.CLANG == 'google'
+        if: env.CLANG && env.CLANG_NAME == 'google' 
         uses: actions/checkout@v4
         with:
           repository: 'Nicklas373/aosp-clang'
@@ -46,8 +47,20 @@ jobs:
           fetch-depth: 1
           path: 'clang'
 
+      - name: 设置环境变量
+        if: env.clang
+        run: |
+          echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "LD=ld.lld" >> $GITHUB_ENV
+          echo "AR=llvm-ar" >> $GITHUB_ENV
+          echo "NM=llvm-nm" >> $GITHUB_ENV
+          echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
+          echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
+          echo "STRIP=llvm-strip" >> $GITHUB_ENV         
+
       - name: LLVM
-        if: env.LLVM == 0
+        if: env.LLVM
         run: |
           mkdir -p $GITHUB_WORKSPACE/llvm-clang
           cd $GITHUB_WORKSPACE/llvm-clang
@@ -66,7 +79,7 @@ jobs:
           # 注入到全局 PATH
           echo "$GITHUB_WORKSPACE/llvm-clang/bin" >> $GITHUB_PATH
 
-      - name: 获取 sony sm6375 内核源代码
+      - name: sony sm6375 Kernel srcoure
         uses: actions/checkout@v4
         with:
           repository: 'LineageOS/android_kernel_sony_sm6375'
@@ -74,8 +87,8 @@ jobs:
           fetch-depth: 1
           path: 'kernel-src'
 
-      - name: 修复编译报错
-        if: false
+      - name: 编译报错处理
+        if: true
         run: |
           echo "=== 修复找不到 .h 文件的问题"
           cd kernel-src 
@@ -181,17 +194,6 @@ jobs:
           
           export ARCH=arm64
           export SUBARCH=arm64
-          
-          # 让构建系统全面使用 Clang 及其 LLVM 工具链
-          if [ $CLANG -eq 0 ]; then
-            export CC=clang
-            export LD=ld.lld
-            export AR=llvm-ar
-            export NM=llvm-nm
-            export OBJCOPY=llvm-objcopy
-            export OBJDUMP=llvm-objdump
-            export STRIP=llvm-strip
-          fi
           
           export LLVM=1 LLVM_IAS=1      
           
