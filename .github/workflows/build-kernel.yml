@@ -23,12 +23,7 @@ jobs:
       - name: 克隆当前仓库 (用于获取 patches 目录)
         uses: actions/checkout@v4
       
-      - name: 克隆所需环境
-        run: |
-          echo "克隆源代码"
-          git clone -q --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
-
-      - name: 下载并部署clang 编译器
+      - name: 获取clang 编译器
         run: |
           
           if [ "$CLANG" == "lineage" ]; then
@@ -38,9 +33,14 @@ jobs:
             git clone -q --depth=1 -b r412851 https://github.com/Nicklas373/aosp-clang.git clang
           
           else
-            echo "❌ 请填写编译器"
-            exit 1
+            echo "❌ 请填写编译器" && exit 1
           fi
+      
+      - name: 获取内核源代码
+        run: |
+          echo "克隆源代码"
+          git clone -q --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
+
 
       - name: 修复编译报错
         run: |
@@ -121,9 +121,8 @@ jobs:
 
       - name: 添加 deconfig 文件
         run: |
-          cd kernel-src
           echo "==== 开始精准注入 DroidSpaces 核心与推荐配置 ===="
-          cat <<EOF > arch/arm64/configs/droidspaces.config
+          cat <<EOF > ./droidspaces.config
           # IPC
           CONFIG_SYSVIPC=y
           CONFIG_POSIX_MQUEUE=y
@@ -147,6 +146,8 @@ jobs:
           cd kernel-src
           
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make mrproper 
+          mkdir -p out
           
           export ARCH=arm64
           export SUBARCH=arm64
@@ -167,7 +168,7 @@ jobs:
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
           ./scripts/kconfig/merge_config.sh -m out/.config \
             arch/arm64/configs/vendor/holi-qgki_defconfig \
-            arch/arm64/configs/droidspaces.config
+            ../droidspaces.config
           
           echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
           make O=out -j$(nproc) Image || exit 1
