@@ -160,7 +160,11 @@ jobs:
         run: |
           cd kernel-src
           git clean -d -f -x
-
+          make mrproper
+          
+          rm -rf out
+          mkdir -p out
+          
           export ARCH=arm64
           export SUBARCH=arm64
           
