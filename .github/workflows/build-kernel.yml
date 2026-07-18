@@ -104,22 +104,16 @@ jobs:
         run: |
           cd kernel-src 
 
-          echo "=== 💥 全局拔除 -Werror，将警告降级为普通提示 ==="
-          # 1. 强力清除根目录 Makefile 中的 -Werror 标志
-          if [ -f "Makefile" ]; then
-            sed -i 's/-Werror//g' Makefile
-            # 顺便干掉可能存在的特定警告拦截（如 clang 的某些硬性限制）
-            sed -i 's/CFLAGS_KERNEL += -Werror//g' Makefile 2>/dev/null || true
-            sed -i 's/KBUILD_CFLAGS += -Werror//g' Makefile 2>/dev/null || true
-          fi
+          echo "=== 💥 优雅拔除 -Werror，将警告降级为普通提示 ==="
+          # 1. 优先把 -Werror=xxx 形式的参数替换为 -Wxxx（例如 -Werror=strict-prototypes 变成 -Wstrict-prototypes）
+          # 这样既去掉了把警告当错误的逻辑，又保留了原有的警告检测，不会导致参数碎掉
+          find . -name "Makefile*" -o -name "Makefile" | xargs sed -i 's/-Werror=/-W/g' 2>/dev/null || true
 
-          # 2. 顺便清理架构与构建工具目录下的 Makefile，防止漏网之鱼
-          find arch/arm64/ -name "Makefile" -exec sed -i 's/-Werror//g' {} + 2>/dev/null || true
-          find scripts/ -name "Makefile*" -exec sed -i 's/-Werror//g' {} + 2>/dev/null || true
+          # 2. 再把那些独立的、落单的 -Werror 标志单独消灭掉（注意前后匹配空格或边界，防止误伤）
+          find . -name "Makefile*" -o -name "Makefile" | xargs sed -i 's/\b-Werror\b//g' 2>/dev/null || true
 
-          echo "✅ 全局 -Werror 已强行物理抹除！所有警告将不再拦截编译。"
+          echo "✅ 全局 -Werror 已优雅抹除，编译参数结构完整！"
 
-          # ... 后面保留你原本其他的核心逻辑（如网卡或特殊的源码断层修复） ...
       
       - name: 编译报错处理
         if: true
