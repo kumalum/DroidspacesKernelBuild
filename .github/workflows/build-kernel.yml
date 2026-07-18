@@ -148,8 +148,9 @@ jobs:
           
           # 1. 彻底清理之前残留的编译产物
           make mrproper
-          
+         
           # 2. 生成配置文件
+          make ARCH=arm64 defconfig
           make ARCH=arm64 gki_defconfig
           
           # 3. 声明编译器环境变量
