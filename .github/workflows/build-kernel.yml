@@ -159,11 +159,7 @@ jobs:
       - name: 执行内核编译 (使用 AOSP 交叉编译链)
         run: |
           cd kernel-src
-          git clean -d -f -x
           make mrproper
-          
-          rm -rf out
-          mkdir -p out
           
           export ARCH=arm64
           export SUBARCH=arm64
@@ -182,15 +178,15 @@ jobs:
           export LLVM=1 LLVM_IAS=1      
           
           # 2. 生成配置文件
-          make O=out gki_defconfig
+          make gki_defconfig
          
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
-          ./scripts/kconfig/merge_config.sh -m out/.config \
+          ./scripts/kconfig/merge_config.sh -m .config \
             arch/arm64/configs/vendor/holi-qgki_defconfig \
             ../droidspaces.config
           
           echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
-          make O=out -j$(nproc) Image || exit 1
+          make -j$(nproc) Image || exit 1
 
           # echo "==== 开始多线程编译外置驱动模块 (允许忽略特定符号未定义) ===="
           # 核心技巧：通过向 KBUILD_EXTRA_SYMBOLS 或 KBUILD_MODPOST_WARN 注入参数
@@ -214,7 +210,7 @@ jobs:
           mkdir -p out_artifacts
           
           echo "=== 收集编译出来的 Image 文件 ==="
-          NEW_KERNEL="kernel-src/out/arch/arm64/boot/Image"
+          NEW_KERNEL="kernel-src/arch/arm64/boot/Image"
           if [ -f "$NEW_KERNEL" ]; then
             cp "$NEW_KERNEL" out_artifacts/Image
             echo "✌️ 内核收集成功"
