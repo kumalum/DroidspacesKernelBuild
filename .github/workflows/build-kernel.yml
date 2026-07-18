@@ -5,7 +5,9 @@ on:
 
 env:
   # clang 编译器选择 google lineage
-  CLANG: "google"
+  CLANG: 1
+  CLANG_NAME: 'lineage'
+  LLVM: 0
 
 jobs:
   build:
@@ -24,6 +26,7 @@ jobs:
         uses: actions/checkout@v4
       
       - name: 获取clang 编译器
+        if: env.CLANG == 0
         run: |
           
           if [ "$CLANG" == "lineage" ]; then
@@ -43,6 +46,26 @@ jobs:
             echo "❌ 请填写编译器" && exit 1
           fi
       
+      - name: 下载并部署 LLVM 官方纯净版 Clang 17
+        if: env.LLVM == 0
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/llvm-clang
+          cd $GITHUB_WORKSPACE/llvm-clang
+          
+          echo "==== 正在拉取 LLVM 官方 17.0.6 稳定版工具链 ===="
+          curl -L --retry 5 --retry-delay 2 -o llvm-17.tar.xz \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu.tar.xz"
+          
+          echo "==== 正在解压 ===="
+          tar -f llvm-17.tar.xz -xJ --strip-components=1 || { echo "❌ 解压失败"; exit 1; }
+          rm -f llvm-17.tar.xz
+          
+          # 验证编译器是否可用
+          ./bin/clang --version
+          
+          # 注入到全局 PATH
+          echo "$GITHUB_WORKSPACE/llvm-clang/bin" >> $GITHUB_PATH
+
       - name: 获取内核源代码
         run: |
           echo "克隆源代码"
@@ -156,14 +179,17 @@ jobs:
           export SUBARCH=arm64
           
           # 让构建系统全面使用 Clang 及其 LLVM 工具链
-          export CC=clang
-          export LD=ld.lld
-          export AR=llvm-ar
-          export NM=llvm-nm
-          export OBJCOPY=llvm-objcopy
-          export OBJDUMP=llvm-objdump
-          export STRIP=llvm-strip
-          export LLVM=1 LLVM_IAS=1        
+          if [ $CLANG -eq 0 ]; then
+            export CC=clang
+            export LD=ld.lld
+            export AR=llvm-ar
+            export NM=llvm-nm
+            export OBJCOPY=llvm-objcopy
+            export OBJDUMP=llvm-objdump
+            export STRIP=llvm-strip
+          fi
+          
+          export LLVM=1 LLVM_IAS=1      
           
           # 2. 生成配置文件
           make O=out gki_defconfig
