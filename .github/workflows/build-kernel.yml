@@ -144,16 +144,17 @@ jobs:
             exit 1
           fi
           
-          echo "=== [5/5] 🔋 修复 step-chg-jeita.c 缺少函数隐式声明报错 ==="
+          echo "=== [5/5] 🔋 修复 step-chg-jeita.c 缺少的 5 参数函数声明 ==="
           JEITA_SRC="drivers/power/supply/qcom/step-chg-jeita.c"
           if [ -f "$JEITA_SRC" ]; then
-            # 找到文件中第一个 #include 或者是合适的位置，在上方注入该函数的 extern 声明
-            # 这样编译器在编译此文件时，就能提前知道该函数的存在以及它的参数和返回值类型
-            sed -i '/#include/ {
-              i\extern int read_range_data_from_node(struct device_node *node, const char *propname, void *buf, int size);
-              :a; n; ba;
-            }' "$JEITA_SRC"
-            echo "✅ step-chg-jeita.c 函数隐式声明修复完毕！"
+            # 强行还原文件，洗掉之前错误的 4 参数声明
+            git checkout -- "$JEITA_SRC" 2>/dev/null || true
+            
+            # 使用通用类型 (void *) 和 5 个参数来适配索尼的魔改函数
+            # 直接插入到文件的第一行，并前置声明 struct device_node 解决可见性警告
+            sed -i '1i struct device_node;\nextern int read_range_data_from_node(struct device_node *node, const char *propname, void *buf, int size, int extra);' "$JEITA_SRC"
+            
+            echo "✅ step-chg-jeita.c 5参数函数声明修复完毕！"
           else
             echo "❌ 未找到 $JEITA_SRC 源文件"
           fi
