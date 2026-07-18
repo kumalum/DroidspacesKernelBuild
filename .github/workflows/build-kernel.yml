@@ -35,21 +35,8 @@ jobs:
             git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
           
           elif [ "$CLANG" == "google" ]; then
-            mkdir -p $GITHUB_WORKSPACE/clang
-            cd $GITHUB_WORKSPACE/clang
-        
-            # 1. 下载 Google 官方为 Android 内核（如 5.4 / 5.10 GKI）配套的稳定版 Clang r498226b (Clang 17.0.2)
-            # 这是目前高通 5.4 内核兼顾老旧驱动和 GKI 审查最稳的版本
-            echo "正在从 Google 官方服务器拉取 Clang 工具链..."
-            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498226b.tar.gz
-            
-            # 2. 解压编译器本体
-            tar -xzf clang-r498226b.tar.gz
-            rm -f clang-r498226b.tar.gz
-            
-            # 3. 验证下载是否成功
-            echo "Google Clang 部署成功，当前版本验证："
-            ./bin/clang --version
+            git clone -q --depth=1 -b r412851 https://github.com/Nicklas373/aosp-clang.git clang
+          
           else
             echo "❌ 请填写编译器"
             exit 1
@@ -178,7 +165,7 @@ jobs:
           make O=out gki_defconfig
          
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
-          ARCH=arm64 KCONFIG_CONFIG=out/.config ./scripts/kconfig/merge_config.sh -m out/.config \
+          ./scripts/kconfig/merge_config.sh -m out/.config \
             arch/arm64/configs/vendor/holi-qgki_defconfig \
             arch/arm64/configs/droidspaces.config
           
