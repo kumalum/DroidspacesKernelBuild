@@ -5,9 +5,9 @@ on:
 
 env:
   # clang 编译器选择 google lineage
-  CLANG: false
-  CLANG_NAME: ""
-  LLVM: true
+  CLANG: true
+  CLANG_NAME: "lineage"
+  LLVM: false
 
 jobs:
   build:
@@ -200,6 +200,7 @@ jobs:
          
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
           ./scripts/kconfig/merge_config.sh -m .config \
+            ./diffconfig/common.config \
             ../droidspaces.config
           
           echo "==== 开始使用纯 LLVM 多线程编译内核本体 (Image) ===="
