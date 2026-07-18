@@ -33,8 +33,9 @@ jobs:
 
           elif [ "$CLANG" == "google" ]; then
             echo "=== 获取 google 编译器 ==="
-            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498226b.tar.gz
-            tar -xzf clang-r498226b.tar.gz && rm -f clang-r498226b.tar.gz
+            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/aml_ads_341826060/clang-r487747c.tar.gz
+            echo "✌️下载成功"
+            tar -xzf clang-r487747c.tar.gz && rm -f clang-r498226b.tar.gz
             ls -al
             # 验证并注入全局环境变量
             echo "$GITHUB_WORKSPACE/clang-r498226b/bin" >> $GITHUB_PATH
