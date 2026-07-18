@@ -106,7 +106,19 @@ jobs:
           echo "==== 验证高通网卡驱动批量修复情况 ===="
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
-
+          
+          echo "=== [3/3] 修复 qcom-spmi-adc5 缺失的 QN5965 标定宏 ==="
+          VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
+          if [ -f "$VADC_HEADER" ]; then
+            # 寻找 SCALE_HW_CALIB_BATT_THERM_100K，并在其后插入缺失的 QN5965 宏
+            sed -i '/SCALE_HW_CALIB_BATT_THERM_100K,/a \	SCALE_HW_CALIB_BATT_THERM_100K_QN5965,' "$VADC_HEADER"
+            sed -i '/SCALE_HW_CALIB_PM5_NUM,/a \	SCALE_HW_CALIB_THERM_100K_QN5965,' "$VADC_HEADER"
+            
+            echo "✅ QN5965 标定宏注入成功！"
+          else
+            echo "❌ 未找到 $VADC_HEADER 头文件"
+          fi
+      
       - name: 应用 DroidSpaces 补丁
         run: |
           cd kernel-src
