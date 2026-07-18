@@ -107,7 +107,7 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
           
-          echo "=== [3/3] 🧬 终极修复：解除 qcom-vadc-common.h 的平台宏限制 ==="
+          echo "=== [3/3] 解除 qcom-vadc-common.h 的平台宏限制 ==="
           VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
           if [ -f "$VADC_HEADER" ]; then
             # 把头文件里的 #if defined(CONFIG_ARCH_SONY_ZAMBEZI) 强行改成 #if 1
@@ -121,7 +121,23 @@ jobs:
             echo "❌ 未找到 $VADC_HEADER 头文件"
             exit 1
           fi
-      
+
+          echo "=== [4/4] 修复 qcom-vadc-common.c 中因索尼补丁冲突导致的函数重定义 ==="
+          VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
+          if [ -f "$VADC_SRC" ]; then
+            # 使用 awk 将第二个极其不规范的 #else 分支干掉
+            # 当遇到 CONFIG_ARCH_SONY_MURRAY 后，将其下方的 #else 到 #endif 之间的内容直接擦除或重命名
+            awk '
+            /#if defined\(CONFIG_ARCH_SONY_MURRAY\)/ { flag=1; print; next }
+            flag && /#else/ { flag=2; print "#if 0 // 移除冲突的重复定义"; next }
+            flag==2 && /#endif/ { flag=0; print "#endif"; next }
+            { print }
+            ' "$VADC_SRC" > "${VADC_SRC}.tmp" && mv "${VADC_SRC}.tmp" "$VADC_SRC"
+            echo "✅ qcom-vadc-common.c 重定义冲突修复完毕！"
+          else
+            echo "❌ 未找到 $VADC_SRC 源文件"
+            exit 1
+          fi     
       - name: 应用 DroidSpaces 补丁
         run: |
           cd kernel-src
