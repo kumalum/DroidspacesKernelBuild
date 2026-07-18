@@ -271,11 +271,12 @@ jobs:
       - name: 执行内核编译 (使用 AOSP 交叉编译链)
         run: |
           cd kernel-src
+          export KBUILD_OUTPUT=out # 内核原生支持的环境变量，等同于 O=out
           make mrproper
-          
+          mkdir out
+               
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
-          ./scripts/kconfig/merge_config.sh -m .config \
-            arch/arm64/configs/vendor/holi-qgki_defconfig \
+          scripts/kconfig/merge_config.sh -m arch/arm64/configs/vendor/holi-qgki_defconfig \
             arch/arm64/configs/diffconfig/common.config \
             ../droidspaces.config
           
