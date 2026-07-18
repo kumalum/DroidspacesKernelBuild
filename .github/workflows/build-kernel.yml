@@ -124,6 +124,10 @@ jobs:
             echo "==== 🔍 动态验证头文件修改结果 ===="
             grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
             echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
+          else
+            echo "❌ 未找到 $VADC_HEADER 头文件"
+            exit 1
+          fi
 
           echo "=== [4/4] 修复 qcom-vadc-common.c 中因索尼补丁冲突导致的函数重定义 ==="
           VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
