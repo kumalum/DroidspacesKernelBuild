@@ -21,17 +21,34 @@ jobs:
           gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev \
           libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
 
-      - name: 克隆当前仓库 (用于获取 patches 目录)
+      - name: 签出自身
         uses: actions/checkout@v4
+        with:
+          path: 'droidspaces_kernel'
       
-      - name: 获取clang 编译器
-        if: env.CLANG == 0
-        run: |
-          git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git lineage-clang
-          echo "$GITHUB_WORKSPACE/lineage-clang/bin" >> $GITHUB_PATH
+      - name: lineage-clang
+        uses: actions/checkout@v4
+        with:
+          # 别人的仓库名（格式：用户名/仓库名）
+          repository: 'LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b'
+          # 指定克隆深度（1 表示只拉取最近的一次提交，加速下载）
+          fetch-depth: 1
+          # 建议指定存放目录，避免覆盖当前工作区
+          path: 'clang'
 
-      
-      - name: 下载并部署 LLVM 官方纯净版 Clang 17
+      - name: google-clang
+        uses: actions/checkout@v4
+        with:
+          # 别人的仓库名（格式：用户名/仓库名）
+          repository: 'Nicklas373/aosp-clang'
+          # 指定分支、Tag 或 Commit SHA
+          ref: 'r412851'
+          # 指定克隆深度（1 表示只拉取最近的一次提交，加速下载）
+          fetch-depth: 1
+          # 建议指定存放目录，避免覆盖当前工作区
+          path: 'clang'
+
+      - name: LLVM
         if: env.LLVM == 0
         run: |
           mkdir -p $GITHUB_WORKSPACE/llvm-clang
@@ -185,8 +202,21 @@ jobs:
             arch/arm64/configs/vendor/holi-qgki_defconfig \
             ../droidspaces.config
           
-          echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
-          make -j$(nproc) Image || exit 1
+          echo "==== 开始使用纯 LLVM 多线程编译内核本体 (Image) ===="
+          # 使用 tee 将编译日志同时输出到终端和文件，并捕获退出状态
+          set -o pipefail
+          make -j$(nproc) Image 2>&1 | tee build_output.log || EXIT_CODE=$?
+
+          # 如果编译失败，倒带日志，精准筛选出 error 核心上下文，防止被 GitHub 抹除
+          if [ ! -z "$EXIT_CODE" ]; then
+            echo "===================================================="
+            echo "❌ 编译崩溃！正在为你精准提取引发失败的底层源码报错："
+            echo "===================================================="
+            grep -B 3 -A 5 -i "error:" build_output.log || tail -n 100 build_output.log
+            exit 1
+          else
+            echo "🎉 内核本体编译成功！"
+          fi
 
           # echo "==== 开始多线程编译外置驱动模块 (允许忽略特定符号未定义) ===="
           # 核心技巧：通过向 KBUILD_EXTRA_SYMBOLS 或 KBUILD_MODPOST_WARN 注入参数
