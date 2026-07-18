@@ -27,9 +27,6 @@ jobs:
         run: |
           echo "克隆源代码"
           git clone -q --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
-          
-      - name: Lineage clang 编译器
-          echo "=== 克隆 clang 编译器"
 
       - name: 下载并部署clang 编译器
         run: |
