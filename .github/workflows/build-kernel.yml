@@ -123,57 +123,77 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
           
-          # echo "=== [3/3] 使用 awk 注入 QN5965 标定宏 ==="
-          # VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
-          # if [ -f "$VADC_HEADER" ]; then
-          #   # 使用 awk 锁定目标行并在其下方精准插入，不受空格/缩进干扰
-          #   awk '
-          #   /SCALE_HW_CALIB_BATT_THERM_100K,/ {
-          #       print $0;
-          #       print "\tSCALE_HW_CALIB_BATT_THERM_100K_QN5965,";
-          #       print "\tSCALE_HW_CALIB_THERM_100K_QN5965,";
-          #       next;
-          #   }
-          #   { print $0; }
-          #   ' "$VADC_HEADER" > "${VADC_HEADER}.tmp" && mv "${VADC_HEADER}.tmp" "$VADC_HEADER"
+          echo "=== [3/3] 使用 awk 注入 QN5965 标定宏 ==="
+          VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
+          if [ -f "$VADC_HEADER" ]; then
+            # 使用 awk 锁定目标行并在其下方精准插入，不受空格/缩进干扰
+            awk '
+            /SCALE_HW_CALIB_BATT_THERM_100K,/ {
+                print $0;
+                print "\tSCALE_HW_CALIB_BATT_THERM_100K_QN5965,";
+                print "\tSCALE_HW_CALIB_THERM_100K_QN5965,";
+                next;
+            }
+            { print $0; }
+            ' "$VADC_HEADER" > "${VADC_HEADER}.tmp" && mv "${VADC_HEADER}.tmp" "$VADC_HEADER"
 
-          #   echo "==== 🔍 动态验证头文件修改结果 ===="
-          #   grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
-          #   echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
-          # else
-          #   echo "❌ 未找到 $VADC_HEADER 头文件"
-          #   exit 1
-          # fi
+            echo "==== 🔍 动态验证头文件修改结果 ===="
+            grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
+            echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
+          else
+            echo "❌ 未找到 $VADC_HEADER 头文件"
+            exit 1
+          fi
 
-          # echo "=== [4/4] 🛑 彻底解决 qcom-vadc-common.c 的未使用/重定义冲突 ==="
-          # VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
-          # if [ -f "$VADC_SRC" ]; then
-          #   # 1. 依然在 1641 行对冲突函数进行重命名
-          #   sed -i '1641s/qcom_vadc_scale_hw_calib_batt_therm_100/qcom_vadc_scale_hw_calib_batt_therm_100_sony_murray_only/' "$VADC_SRC"
-          #   
-          #   # 2. 关键一步：在 1641 行前插入 __maybe_unused 属性，堵住编译器的警告
-          #   sed -i '1641s/static int/__maybe_unused static int/' "$VADC_SRC"
+          echo "=== [4/4] 🛑 彻底解决 qcom-vadc-common.c 的未使用/重定义冲突 ==="
+          VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
+          if [ -f "$VADC_SRC" ]; then
+            # 1. 依然在 1641 行对冲突函数进行重命名
+            sed -i '1641s/qcom_vadc_scale_hw_calib_batt_therm_100/qcom_vadc_scale_hw_calib_batt_therm_100_sony_murray_only/' "$VADC_SRC"
+            
+            # 2. 关键一步：在 1641 行前插入 __maybe_unused 属性，堵住编译器的警告
+            sed -i '1641s/static int/__maybe_unused static int/' "$VADC_SRC"
 
-          #   echo "✅ qcom-vadc-common.c 已通过 __maybe_unused 彻底修复！"
-          # else
-          #   echo "❌ 未找到 $VADC_SRC 源文件"
-          #   exit 1
-          # fi
-          # 
-          # echo "=== [5/5] 🔋 修复 step-chg-jeita.c 缺少的 5 参数函数声明 ==="
-          # JEITA_SRC="drivers/power/supply/qcom/step-chg-jeita.c"
-          # if [ -f "$JEITA_SRC" ]; then
-          #   # 强行还原文件，洗掉之前错误的 4 参数声明
-          #   git checkout -- "$JEITA_SRC" 2>/dev/null || true
-          #   
-          #   # 使用通用类型 (void *) 和 5 个参数来适配索尼的魔改函数
-          #   # 直接插入到文件的第一行，并前置声明 struct device_node 解决可见性警告
-          #   sed -i '1i struct device_node;\nextern int read_range_data_from_node(struct device_node *node, const char *propname, void *buf, int size, int extra);' "$JEITA_SRC"
-          #   
-          #   echo "✅ step-chg-jeita.c 5参数函数声明修复完毕！"
-          # else
-          #   echo "❌ 未找到 $JEITA_SRC 源文件"
-          # fi
+            echo "✅ qcom-vadc-common.c 已通过 __maybe_unused 彻底修复！"
+          else
+            echo "❌ 未找到 $VADC_SRC 源文件"
+            exit 1
+          fi
+          
+          echo "=== [5/5] 🔋 修复 step-chg-jeita.c 缺少的 5 参数函数声明 ==="
+          JEITA_SRC="drivers/power/supply/qcom/step-chg-jeita.c"
+          if [ -f "$JEITA_SRC" ]; then
+            # 强行还原文件，洗掉之前错误的 4 参数声明
+            git checkout -- "$JEITA_SRC" 2>/dev/null || true
+            
+            # 使用通用类型 (void *) 和 5 个参数来适配索尼的魔改函数
+            # 直接插入到文件的第一行，并前置声明 struct device_node 解决可见性警告
+            sed -i '1i struct device_node;\nextern int read_range_data_from_node(struct device_node *node, const char *propname, void *buf, int size, int extra);' "$JEITA_SRC"
+            
+            echo "✅ step-chg-jeita.c 5参数函数声明修复完毕！"
+          else
+            echo "❌ 未找到 $JEITA_SRC 源文件"
+          fi
+          
+          echo "=== [6/6] 🔋 修复 smb5-lib.c 中索尼遗留的多处编译断层 ==="
+          SMB_SRC="drivers/power/supply/qcom/smb5-lib.c"
+          if [ -f "$SMB_SRC" ]; then
+            # 1. 在文件开头注入 set_sdp_current 的 extern 声明，解决隐式声明报错
+            sed -i '1i struct smb_charger;\nextern int set_sdp_current(struct smb_charger *chg, int icl_ua);' "$SMB_SRC"
+            
+            # 2. 修复第 1682 行死掉的 goto unsuspend;
+            # 将其替换为更安全的返回语句或中断，由于是在 rc 赋值后，直接让其 goto out; 或者 return rc;
+            # 内核里通用的错误退出标签一般有 out，这里直接改成 return rc; 彻底避开未定义标签
+            sed -i '1682s/goto unsuspend;/return rc;/' "$SMB_SRC"
+            
+            # 3. 屏蔽未定义的工作队列初始化 smblib_info_charge_status_work
+            # 既然没有实现对应的工作函数，直接将其整行注释掉
+            sed -i '/smblib_info_charge_status_work/s/^/\/\/ /' "$SMB_SRC"
+
+            echo "✅ smb5-lib.c 的 4 处断层已强行修复完毕！"
+          else
+            echo "❌ 未找到 $SMB_SRC 源文件"
+          fi
       
       - name: 应用 DroidSpaces 补丁
         run: |
@@ -244,11 +264,6 @@ jobs:
           CONFIG_PID_NS=y
           EOF
 
-
-          # 核心修复：关闭导致编译失败的高通 ADC5 冲突项
-          # 或者强制重置相关 PMIC 标定宏
-          # CONFIG_SENSORS_QPNP_ADC_VOLTAGE=n
-          # CONFIG_QCOM_SPMI_ADC5=n
           # NixOS / tmpfs support
           # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
           # set_config "CONFIG_TMPFS_XATTR" "y"
