@@ -27,12 +27,14 @@ jobs:
         run: |
           
           if [ "$CLANG" == "lineage" ]; then
+            echo "=== 获取 lineage 编译器 ==="
             git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git lineage-clang
             echo "$GITHUB_WORKSPACE/lineage-clang/bin" >> $GITHUB_PATH
 
           elif [ "$CLANG" == "google" ]; then
-            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/aml_ads_341826060/clang-r487747c.tar.gz
-            tar -xzf clang-r487747c.tar.gz && rm -f clang-r498226b.tar.gz
+            echo "=== 获取 google 编译器 ==="
+            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498226b.tar.gz
+            tar -xzf clang-r498226b.tar.gz && rm -f clang-r498226b.tar.gz
             ls -al
             # 验证并注入全局环境变量
             echo "$GITHUB_WORKSPACE/clang-r498226b/bin" >> $GITHUB_PATH
