@@ -129,22 +129,27 @@ jobs:
             exit 1
           fi
 
-          echo "=== [4/4] 修复 qcom-vadc-common.c 中因索尼补丁冲突导致的函数重定义 ==="
+          echo "=== [4/4] 🛑 强制重命名 qcom-vadc-common.c 中重定义的冲突函数 ==="
           VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
           if [ -f "$VADC_SRC" ]; then
-            # 使用 awk 将第二个极其不规范的 #else 分支干掉
-            # 当遇到 CONFIG_ARCH_SONY_MURRAY 后，将其下方的 #else 到 #endif 之间的内容直接擦除或重命名
-            awk '
-            /#if defined\(CONFIG_ARCH_SONY_MURRAY\)/ { flag=1; print; next }
-            flag && /#else/ { flag=2; print "#if 0 // 移除冲突的重复定义"; next }
-            flag==2 && /#endif/ { flag=0; print "#endif"; next }
-            { print }
-            ' "$VADC_SRC" > "${VADC_SRC}.tmp" && mv "${VADC_SRC}.tmp" "$VADC_SRC"
-            echo "✅ qcom-vadc-common.c 重定义冲突修复完毕！"
+            # 还原可能被上一次错误修改的文件（如果是全新 clean 检出的源码可忽略此行）
+            git checkout -- "$VADC_SRC" 2>/dev/null || true
+            
+            # 使用 sed 绕过复杂的 #if/#endif 逻辑
+            # 直接把第 1600 行之后的那个重名的静态函数改名掉（加上 _backup 后缀），让它不再引发重定义冲突
+            # 同时由于它是 static 且没被非 MURRAY 平台调用，改名后会被编译器当作无用函数直接忽略，完美避坑！
+            sed -i 's/static int qcom_vadc_scale_hw_calib_batt_therm_100(/static int qcom_vadc_scale_hw_calib_batt_therm_100_backup(/2' "$VADC_SRC"
+            
+            # 如果上面的独特定位失效，可以用这一行更稳妥的按行匹配（针对第 2 次出现的同名函数）：
+            # 索尼补丁里第二次出现的通常在 CONFIG_ARCH_SONY_MURRAY 的 #else 分支里
+            # 我们通过匹配特定的上下文来将其重命名
+            sed -i '/qcom_vadc_scale_hw_calib_batt_therm_100_QN5965/,/static int qcom_vadc_scale_hw_calib_batt_therm_100/ { s/static int qcom_vadc_scale_hw_calib_batt_therm_100/static int qcom_vadc_scale_hw_calib_batt_therm_100_backup/ }' "$VADC_SRC"
+
+            echo "✅ qcom-vadc-common.c 重定义冲突已通过函数重命名完美修复！"
           else
             echo "❌ 未找到 $VADC_SRC 源文件"
             exit 1
-          fi     
+          fi
       - name: 应用 DroidSpaces 补丁
         run: |
           cd kernel-src
