@@ -57,7 +57,7 @@ jobs:
           echo "STRIP=llvm-strip" >> $GITHUB_ENV         
 
       - name: LLVM
-        if: env.LLVM
+        if: env.LLVM == true
         run: |
           mkdir -p $GITHUB_WORKSPACE/llvm-clang
           cd $GITHUB_WORKSPACE/llvm-clang
@@ -200,7 +200,7 @@ jobs:
          
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
           ./scripts/kconfig/merge_config.sh -m .config \
-            ./diffconfig/common.config \
+            ./arch/arm64/configs/diffconfig/common.config \
             ../droidspaces.config
           
           echo "==== 开始使用纯 LLVM 多线程编译内核本体 (Image) ===="
