@@ -27,11 +27,15 @@ jobs:
         run: |
           
           if [ "$CLANG" == "lineage" ]; then
-            git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
-          
+            git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git lineage-clang
+            echo "$GITHUB_WORKSPACE/lineage-clang/bin" >> $GITHUB_PATH
+
           elif [ "$CLANG" == "google" ]; then
-            git clone -q --depth=1 -b r412851 https://github.com/Nicklas373/aosp-clang.git clang
-          
+            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/aml_ads_341826060/clang-r487747c.tar.gz
+            tar -xzf clang-r487747c.tar.gz && rm -f clang-r498226b.tar.gz
+            ls -al
+            # 验证并注入全局环境变量
+            echo "$GITHUB_WORKSPACE/clang-r498226b/bin" >> $GITHUB_PATH
           else
             echo "❌ 请填写编译器" && exit 1
           fi
@@ -144,10 +148,6 @@ jobs:
       - name: 执行内核编译 (使用 AOSP 交叉编译链)
         run: |
           cd kernel-src
-          
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make mrproper 
-          mkdir -p out
           
           export ARCH=arm64
           export SUBARCH=arm64
