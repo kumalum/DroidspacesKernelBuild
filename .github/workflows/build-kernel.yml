@@ -106,7 +106,7 @@ jobs:
       - name: 替换 gki_defconfig 内容, 满足 DroidSpaces 要求
         run: |
           cd kernel-src
-          DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          DEFCONFIG="arch/arm64/configs/vendor/holi-qgki_defconfig"
 
           # 定义一个智能替换/追加的函数
           set_config() {
@@ -163,8 +163,8 @@ jobs:
           
           # 2. 生成配置文件
           make O=out gki_defconfig
-          make O=out defconfig
-
+         
+          ARCH=arm64 KCONFIG_CONFIG=out/.config ./scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/vendor/holi-qgki_defconfig
           echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
           make O=out -j$(nproc) $MAKE_FLAGS Image || exit 1
 
