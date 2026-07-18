@@ -6,7 +6,6 @@ on:
 env:
   # clang 编译器选择 google lineage
   CLANG: 1
-  CLANG_NAME: 'lineage'
   LLVM: 0
 
 jobs:
@@ -28,23 +27,9 @@ jobs:
       - name: 获取clang 编译器
         if: env.CLANG == 0
         run: |
-          
-          if [ "$CLANG" == "lineage" ]; then
-            echo "=== 获取 lineage 编译器 ==="
-            git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git lineage-clang
-            echo "$GITHUB_WORKSPACE/lineage-clang/bin" >> $GITHUB_PATH
+          git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git lineage-clang
+          echo "$GITHUB_WORKSPACE/lineage-clang/bin" >> $GITHUB_PATH
 
-          elif [ "$CLANG" == "google" ]; then
-            echo "=== 获取 google 编译器 ==="
-            wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/aml_ads_341826060/clang-r487747c.tar.gz
-            echo "✌️下载成功"
-            tar -xzf clang-r487747c.tar.gz && rm -f clang-r487747c.tar.gz
-            ls -al
-            # 验证并注入全局环境变量
-            echo "$GITHUB_WORKSPACE/clang-r487747c/bin" >> $GITHUB_PATH
-          else
-            echo "❌ 请填写编译器" && exit 1
-          fi
       
       - name: 下载并部署 LLVM 官方纯净版 Clang 17
         if: env.LLVM == 0
@@ -54,7 +39,7 @@ jobs:
           
           echo "==== 正在拉取 LLVM 官方 17.0.6 稳定版工具链 ===="
           curl -L --retry 5 --retry-delay 2 -o llvm-17.tar.xz \
-            "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu.tar.xz"
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz"
           
           echo "==== 正在解压 ===="
           tar -f llvm-17.tar.xz -xJ --strip-components=1 || { echo "❌ 解压失败"; exit 1; }
