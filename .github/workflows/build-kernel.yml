@@ -52,7 +52,6 @@ jobs:
         if: env.CLANG
         run: |
           echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
-          ls $GITHUB_WORKSPACE/clang/bin
           
           # echo "CC=clang" >> $GITHUB_ENV
           # echo "LD=ld.lld" >> $GITHUB_ENV
@@ -74,7 +73,7 @@ jobs:
           echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
 
       - name: LLVM
-        if: env.LLVM
+        if: false
         run: |
           mkdir -p $GITHUB_WORKSPACE/llvm-clang
           cd $GITHUB_WORKSPACE/llvm-clang
