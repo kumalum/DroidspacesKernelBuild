@@ -264,7 +264,7 @@ jobs:
             arch/arm64/configs/diffconfig/common.config \
             ../droidspaces.config
           
-          make O=out olddefconfig
+          make olddefconfig
           
           echo "==== 开始使用纯 LLVM 多线程编译内核本体 (Image) ===="
           # 使用 tee 将编译日志同时输出到终端和文件，并捕获退出状态
