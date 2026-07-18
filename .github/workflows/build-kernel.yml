@@ -52,7 +52,7 @@ jobs:
         if: env.CLANG
         run: |
           echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
-          ls "GITHUB_WORKSPACE/clang/bin"
+          ls $GITHUB_WORKSPACE/clang/bin
           
           # echo "CC=clang" >> $GITHUB_ENV
           # echo "LD=ld.lld" >> $GITHUB_ENV
