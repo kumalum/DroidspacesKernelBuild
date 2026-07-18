@@ -6,7 +6,7 @@ on:
 env:
   # clang 编译器选择 google lineage
   CLANG: false
-  CLANG_NAME = ""
+  CLANG_NAME: ""
   LLVM: true
 
 jobs:
