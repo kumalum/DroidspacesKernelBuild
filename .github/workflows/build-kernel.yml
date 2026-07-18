@@ -38,7 +38,7 @@ jobs:
           path: 'clang'
 
       - name: google-clang
-        if: CLANG == 'google'
+        if: env.CLANG == 'google'
         uses: actions/checkout@v4
         with:
           repository: 'Nicklas373/aosp-clang'
@@ -75,7 +75,7 @@ jobs:
           path: 'kernel-src'
 
       - name: 修复编译报错
-        if: 0 == 1
+        if: false
         run: |
           echo "=== 修复找不到 .h 文件的问题"
           cd kernel-src 
