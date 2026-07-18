@@ -107,20 +107,23 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
           
-          echo "=== [3/3] 解除 qcom-vadc-common.h 的平台宏限制 ==="
+          echo "=== [3/3] 使用 awk 注入 QN5965 标定宏 ==="
           VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
           if [ -f "$VADC_HEADER" ]; then
-            # 把头文件里的 #if defined(CONFIG_ARCH_SONY_ZAMBEZI) 强行改成 #if 1
-            # 这样无论编译什么平台，Sony 漏掉的 QN5965 和 QN6832A 标定宏都能全局全局可见
-            sed -i 's/#if defined(CONFIG_ARCH_SONY_ZAMBEZI)/#if 1 \/\/ 强行对所有索尼平台开放/g' "$VADC_HEADER"
-            
-            echo "==== 🔍 验证头文件宏解锁状态 ===="
-            grep -B 2 -A 2 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 解锁失败！"; exit 1; }
-            echo "✅ 索尼私有标定宏已成功解除平台限制！"
-          else
-            echo "❌ 未找到 $VADC_HEADER 头文件"
-            exit 1
-          fi
+            # 使用 awk 锁定目标行并在其下方精准插入，不受空格/缩进干扰
+            awk '
+            /SCALE_HW_CALIB_BATT_THERM_100K,/ {
+                print $0;
+                print "\tSCALE_HW_CALIB_BATT_THERM_100K_QN5965,";
+                print "\tSCALE_HW_CALIB_THERM_100K_QN5965,";
+                next;
+            }
+            { print $0; }
+            ' "$VADC_HEADER" > "${VADC_HEADER}.tmp" && mv "${VADC_HEADER}.tmp" "$VADC_HEADER"
+
+            echo "==== 🔍 动态验证头文件修改结果 ===="
+            grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
+            echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
 
           echo "=== [4/4] 修复 qcom-vadc-common.c 中因索尼补丁冲突导致的函数重定义 ==="
           VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
