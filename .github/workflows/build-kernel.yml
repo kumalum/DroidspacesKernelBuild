@@ -76,14 +76,8 @@ jobs:
           
           echo "==== 正在应用 002 POSIX Queue 补丁 ===="
           if patch -p1 < 002-posix_mqueue.patch > /dev/null; then
-            echo "✌️陪你002 文件合并成功"
+            echo "✌️: 合并成功"
           else
-            echo "POSIX_FLAGE=true" >> $GITHUB_ENV
-
-      - name: 修复 002 补丁报错
-        run: |
-          cd kernel-src
-          if [ $POSIX_FLAGE == "true" ]; then
             TARGET_FILE="include/linux/sched/user.h"
             
             # 3. 使用 awk 精准锁定并替换结构体内部的目标行
