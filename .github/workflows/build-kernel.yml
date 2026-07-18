@@ -31,11 +31,8 @@ jobs:
         if: env.CLANG && env.CLANG_NAME == 'lineage'
         uses: actions/checkout@v4
         with:
-          # 别人的仓库名（格式：用户名/仓库名）
           repository: 'LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b'
-          # 指定克隆深度（1 表示只拉取最近的一次提交，加速下载）
           fetch-depth: 1
-          # 建议指定存放目录，避免覆盖当前工作区
           path: 'clang'
 
       - name: google-clang
@@ -90,16 +87,17 @@ jobs:
       - name: 编译报错处理
         if: true
         run: |
-          echo "=== 修复找不到 .h 文件的问题"
           cd kernel-src 
-          # 使用 find 深度遍历，强行把该目录下所有头文件的 TRACE_INCLUDE_PATH 全部修正
-          # 同时，不管三七二十一，把里面所有的 .h 文件全部软链接到内核主树中
-          if [ -d techpack/datarmnet/core ]; then
+          echo "=== [1/2] 修复 WALT 调度器在 O=out 编译时的 trace.h 寻路错误 ==="
+          if [ -f kernel/sched/walt/trace.h ]; then
+            sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../kernel/sched/walt|g' kernel/sched/walt/trace.h
+            echo "✅ WALT 寻路路径修正成功！"
+          fi
+
+          echo "=== [2/2] 修复找不到网卡 .h 文件与 TRACE_INCLUDE_PATH 的问题 ==="
+          if [ -d techpack/datarmnet/core ]; then[cite: 1]
             find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
-              # 修正宏定义路径
               sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
-              
-              # 建立绝对路径软链接，防止编译器迷路
               filename=$(basename "$header")
               ln -sf "$GITHUB_WORKSPACE/kernel-src/$header" "include/trace/$filename"
             done
@@ -194,15 +192,14 @@ jobs:
           
           export ARCH=arm64
           export SUBARCH=arm64
-          
           export LLVM=1 LLVM_IAS=1      
           
           # 2. 生成配置文件
-          make gki_defconfig
+          # make gki_defconfig
+          make vendor/holi-qgki_defconfig
          
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
           ./scripts/kconfig/merge_config.sh -m .config \
-            arch/arm64/configs/vendor/holi-qgki_defconfig \
             ../droidspaces.config
           
           echo "==== 开始使用纯 LLVM 多线程编译内核本体 (Image) ===="
