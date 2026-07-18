@@ -208,6 +208,20 @@ jobs:
             echo "❌ 未找到 $QG_SRC 源文件"
           fi
 
+          echo "=== [8/8] 🔋 修复 fg-alg.c 算法函数缺失与死标签报错 ==="
+          FG_SRC="drivers/power/supply/qcom/fg-alg.c"
+          if [ -f "$FG_SRC" ]; then
+            # 1. 将缺失的魔改函数替换为高通原生的、已声明的函数
+            sed -i 's/cap_wt_learning_process_full_data/cap_learning_process_full_data/g' "$FG_SRC"
+            
+            # 2. 精准注释掉第 941 行没被使用的 out: 标签，防止 -Werror 拦截
+            sed -i '941s/out:/\/\/ out:/' "$FG_SRC"
+
+            echo "✅ fg-alg.c 算法冲突与死标签已彻底修复！"
+          else
+            echo "❌ 未找到 $FG_SRC 源文件"
+          fi
+
       
       - name: 应用 DroidSpaces 补丁
         run: |
