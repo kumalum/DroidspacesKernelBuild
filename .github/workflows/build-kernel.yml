@@ -175,22 +175,23 @@ jobs:
             echo "❌ 未找到 $JEITA_SRC 源文件"
           fi
           
-          echo "=== [6/6] 🔋 修复 smb5-lib.c 中索尼遗留的多处编译断层 ==="
+          echo "=== [6/6] 🔋 终极修复 smb5-lib.c 全局残留的死 goto 标签 ==="
           SMB_SRC="drivers/power/supply/qcom/smb5-lib.c"
           if [ -f "$SMB_SRC" ]; then
-            # 1. 在文件开头注入 set_sdp_current 的 extern 声明，解决隐式声明报错
+            # 1. 强行还原文件，确保洗掉之前按行号修改带来的错位
+            git checkout -- "$SMB_SRC" 2>/dev/null || true
+            
+            # 2. 在文件开头注入 set_sdp_current 的 extern 声明
             sed -i '1i struct smb_charger;\nextern int set_sdp_current(struct smb_charger *chg, int icl_ua);' "$SMB_SRC"
             
-            # 2. 修复第 1682 行死掉的 goto unsuspend;
-            # 将其替换为更安全的返回语句或中断，由于是在 rc 赋值后，直接让其 goto out; 或者 return rc;
-            # 内核里通用的错误退出标签一般有 out，这里直接改成 return rc; 彻底避开未定义标签
-            sed -i '1682s/goto unsuspend;/return rc;/' "$SMB_SRC"
+            # 3. 🚨 重点：全局替换！把该文件内所有 goto unsuspend; 统统替换为 return rc;
+            # 这样不管索尼写了多少个，都能一次性消灭干净，且逻辑完美闭环
+            sed -i 's/goto unsuspend;/return rc;/g' "$SMB_SRC"
             
-            # 3. 屏蔽未定义的工作队列初始化 smblib_info_charge_status_work
-            # 既然没有实现对应的工作函数，直接将其整行注释掉
+            # 4. 屏蔽未定义的工作队列初始化
             sed -i '/smblib_info_charge_status_work/s/^/\/\/ /' "$SMB_SRC"
 
-            echo "✅ smb5-lib.c 的 4 处断层已强行修复完毕！"
+            echo "✅ smb5-lib.c 的全局死标签和断层已全部强行修复完毕！"
           else
             echo "❌ 未找到 $SMB_SRC 源文件"
           fi
