@@ -157,10 +157,8 @@ jobs:
           export OBJDUMP=llvm-objdump
           export STRIP=llvm-strip
           
-          # 指定交叉编译的前缀（用于混编时寻找汇编器等，或者新内核直接使用 LLVM=1）
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-   
-         
+          export LLVM=1 LLVM_IAS=1        
+          
           # 2. 生成配置文件
           make O=out gki_defconfig
           make O=out defconfig
