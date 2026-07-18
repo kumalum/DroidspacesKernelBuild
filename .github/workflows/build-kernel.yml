@@ -12,9 +12,9 @@ jobs:
           sudo docker image prune -a -f
           sudo docker container prune -f
           sudo apt-get update
-          sudo apt install -y bc bison build-essential flex gcc-aarch64-linux-gnu \
-          gcc-arm-linux-gnueabi libelf-dev libssl-dev libcrypto++-dev textinfo \
-          xz-utils zlib1g-dev libgmp-dev libmpfr-dev libmpc-dev zstd lz4 lzop liblz4-tool
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib \
+          gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev \
+          libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
 
       - name: 克隆当前仓库 (用于获取 patches 目录)
         uses: actions/checkout@v4
