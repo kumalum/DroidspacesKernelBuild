@@ -107,24 +107,26 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
           
-          echo "=== [3/3] 修复 qcom-spmi-adc5 缺失的 QN5965 标定宏 ==="
+          echo "=== [3/3] 🧬 终极修复：使用 awk 注入 QN5965 标定宏 ==="
           VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
           if [ -f "$VADC_HEADER" ]; then
-            # 1. 先安全地注入 BATT_THERM 宏（如果尚未存在）
-            if ! grep -q "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER"; then
-              sed -i '/SCALE_HW_CALIB_BATT_THERM_100K,/a \	SCALE_HW_CALIB_BATT_THERM_100K_QN5965,' "$VADC_HEADER"
-            fi
-            
-            # 2. 以前面注入成功的 BATT_THERM 宏为精准锚点，在它后面直接塞入普通的 THERM 宏
-            if ! grep -q "SCALE_HW_CALIB_THERM_100K_QN5965" "$VADC_HEADER"; then
-              sed -i '/SCALE_HW_CALIB_BATT_THERM_100K_QN5965,/a \	SCALE_HW_CALIB_THERM_100K_QN5965,' "$VADC_HEADER"
-            fi
-            
-            echo "✅ QN5965 系列标定宏已全部精准注入！"
-            # 打印上下文预览，方便在 Actions 日志里肉眼核对
-            grep -B 2 -A 2 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || true
+            # 使用 awk 锁定目标行并在其下方精准插入，不受空格/缩进干扰
+            awk '
+            /SCALE_HW_CALIB_BATT_THERM_100K,/ {
+                print $0;
+                print "\tSCALE_HW_CALIB_BATT_THERM_100K_QN5965,";
+                print "\tSCALE_HW_CALIB_THERM_100K_QN5965,";
+                next;
+            }
+            { print $0; }
+            ' "$VADC_HEADER" > "${VADC_HEADER}.tmp" && mv "${VADC_HEADER}.tmp" "$VADC_HEADER"
+
+            echo "==== 🔍 动态验证头文件修改结果 ===="
+            grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
+            echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
           else
             echo "❌ 未找到 $VADC_HEADER 头文件"
+            exit 1
           fi
       
       - name: 应用 DroidSpaces 补丁
