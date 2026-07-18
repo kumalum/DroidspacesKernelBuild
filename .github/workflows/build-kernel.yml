@@ -144,7 +144,9 @@ jobs:
       - name: 执行内核编译 (使用 AOSP 交叉编译链)
         run: |
           cd kernel-src
-          echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
+          
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          
           export ARCH=arm64
           export SUBARCH=arm64
           
