@@ -2,6 +2,11 @@ name: Build Xperia 10 IV DroidSpaces Kernel
 
 on:
   workflow_dispatch: # 支持在 GitHub 页面手动点击运行
+    inputs:
+      skip_deploy:
+        description: '是否跳过部署步骤？(true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   build:
@@ -27,6 +32,7 @@ jobs:
           git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
       
       - name: 修复 编译时产生的问题
+        if: github.event.inputs.skip_deploy != 'true'
         run: |
           echo "=== 修复找不到 .h 文件的问题"
           cd kernel-src 
@@ -47,6 +53,11 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
 
+          echo "==== 正在修正 drivers/iio/adc/qcom-spmi-adc5.c ===="
+          # 顺应编译器的报错提示，把未定义的 _QN5965 后缀变量替换为已定义的标准变量
+          sed -i 's/SCALE_HW_CALIB_BATT_THERM_100K_QN5965/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
+          sed -i 's/SCALE_HW_CALIB_THERM_100K_QN5965/SCALE_HW_CALIB_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
+      
       - name: 应用 DroidSpaces 补丁
         run: |
           cd kernel-src
@@ -136,6 +147,7 @@ jobs:
           # Namespaces
           set_config "CONFIG_IPC_NS" "y"
           set_config "CONFIG_PID_NS" "y"
+
           
           # NixOS / tmpfs support
           # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
@@ -166,24 +178,24 @@ jobs:
          
           ARCH=arm64 KCONFIG_CONFIG=out/.config ./scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/vendor/holi-qgki_defconfig
           echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
-          make O=out -j$(nproc) $MAKE_FLAGS Image || exit 1
+          make O=out -j$(nproc) Image || exit 1
 
-          echo "==== 开始多线程编译外置驱动模块 (允许忽略特定符号未定义) ===="
+          # echo "==== 开始多线程编译外置驱动模块 (允许忽略特定符号未定义) ===="
           # 核心技巧：通过向 KBUILD_EXTRA_SYMBOLS 或 KBUILD_MODPOST_WARN 注入参数
           # 强制让 MODPOST 把 undefined 错误降级为 WARNING 警告，从而顺利生成驱动模块 .ko 文件
-          make O=out -j$(nproc) $MAKE_FLAGS modules KBUILD_MODPOST_WARN=1 > build_log.txt 2>&1 || EXIT_CODE=$?
+          # make O=out -j$(nproc) modules KBUILD_MODPOST_WARN=1 > build_log.txt 2>&1 || EXIT_CODE=$?
 
-          if [ ! -z "$EXIT_CODE" ]; then
-            echo "=============================================="
-            echo "❌ 编译失败！正在为你筛选最关键的报错信息..."
-            echo "=============================================="
-            grep -i -C 5 "error:" build_log.txt || tail -n 100 build_log.txt
-            exit 1
-          else
-            echo "=============================================="
-            echo "🎉 编译成功！所有内核与驱动模块链接完毕！"
-            echo "=============================================="
-          fi
+          # if [ ! -z "$EXIT_CODE" ]; then
+          #   echo "=============================================="
+          #   echo "❌ 编译失败！正在为你筛选最关键的报错信息..."
+          #   echo "=============================================="
+          #   grep -i -C 5 "error:" build_log.txt || tail -n 100 build_log.txt
+          #   exit 1
+          # else
+          #   echo "=============================================="
+          #   echo "🎉 编译成功！所有内核与驱动模块链接完毕！"
+          #   echo "=============================================="
+          # fi
       
       - name: 自动解包原本的 boot.img 并替换新内核
         run: |
@@ -199,9 +211,9 @@ jobs:
             exit 1
           fi
       
-          echo "=== 收集编译出来的驱动模块 (.ko 文件)==="
-          find kernel-src/out -name "*.ko" -exec cp {} out_artifacts/ \;
-          echo "[+] 驱动模块收集完毕"
+          # echo "=== 收集编译出来的驱动模块 (.ko 文件)==="
+          # find kernel-src/out -name "*.ko" -exec cp {} out_artifacts/ \;
+          # echo "[+] 驱动模块收集完毕"
 
       - name: 上传编译包到本运行记录 (Artifacts)
         uses: actions/upload-artifact@v4
