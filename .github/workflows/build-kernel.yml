@@ -121,41 +121,26 @@ jobs:
           fi
 
 
-      - name: 替换 gki_defconfig 内容, 满足 DroidSpaces 要求
+      - name: 添加 deconfig 文件
         run: |
           cd kernel-src
-          DEFCONFIG="arch/arm64/configs/vendor/holi-qgki_defconfig"
-
-          # 定义一个智能替换/追加的函数
-          set_config() {
-            local config="$1"
-            local value="$2"
-            
-            # 1. 如果配置项被注释了 (例如 # CONFIG_XXX is not set)，强行替换为 CONFIG_XXX=y
-            if grep -q "# $config is not set" "$DEFCONFIG"; then
-              sed -i "s|# $config is not set|$config=$value|g" "$DEFCONFIG"
-              echo "[替换成功] $config=$value (原为未设置)"
-            # 2. 如果配置项已经是别的值，强行覆盖
-            elif grep -q "$config=" "$DEFCONFIG"; then
-              sed -i "s|$config=.*|$config=$value|g" "$DEFCONFIG"
-              echo "[覆盖成功] $config=$value"
-            # 3. If 如果文件中完全没有这个配置，则在末尾追加
-            else
-              echo "$config=$value" >> "$DEFCONFIG"
-              echo "[追加成功] $config=$value (原文件中缺失)"
-            fi
-          }
-
           echo "==== 开始精准注入 DroidSpaces 核心与推荐配置 ===="
+          cat <<EOF > arch/arm64/configs/droidspaces.config
           # IPC
-          set_config "CONFIG_SYSVIPC" "y"
-          set_config "CONFIG_POSIX_MQUEUE" "y"
-
-          # Namespaces
-          set_config "CONFIG_IPC_NS" "y"
-          set_config "CONFIG_PID_NS" "y"
-
+          CONFIG_SYSVIPC=y
+          CONFIG_POSIX_MQUEUE=y
           
+          # Namespaces
+          CONFIG_IPC_NS=y
+          CONFIG_PID_NS=y
+          
+          # 核心修复：关闭导致编译失败的高通 ADC5 冲突项
+          # 或者强制重置相关 PMIC 标定宏
+          CONFIG_SENSORS_QPNP_ADC_VOLTAGE=n
+          CONFIG_QCOM_SPMI_ADC5=n
+          EOF
+
+
           # NixOS / tmpfs support
           # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
           # set_config "CONFIG_TMPFS_XATTR" "y"
@@ -177,13 +162,16 @@ jobs:
           export OBJCOPY=llvm-objcopy
           export OBJDUMP=llvm-objdump
           export STRIP=llvm-strip
-          
           export LLVM=1 LLVM_IAS=1        
           
           # 2. 生成配置文件
           make O=out gki_defconfig
          
-          ARCH=arm64 KCONFIG_CONFIG=out/.config ./scripts/kconfig/merge_config.sh -m out/.config arch/arm64/configs/vendor/holi-qgki_defconfig
+          # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
+          ARCH=arm64 KCONFIG_CONFIG=out/.config ./scripts/kconfig/merge_config.sh -m out/.config \
+            arch/arm64/configs/vendor/holi-qgki_defconfig \
+            arch/arm64/configs/droidspaces.config
+          
           echo "==== 开始多线程编译内核本体 (vmlinux & Image) ===="
           make O=out -j$(nproc) Image || exit 1
 
