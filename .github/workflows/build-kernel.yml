@@ -95,7 +95,7 @@ jobs:
           fi
 
           echo "=== [2/2] 修复找不到网卡 .h 文件与 TRACE_INCLUDE_PATH 的问题 ==="
-          if [ -d techpack/datarmnet/core ]; then[cite: 1]
+          if [ -d techpack/datarmnet/core ]; then
             find techpack/datarmnet/core -type f -name "*.h" | while read -r header; do
               sed -i 's|#define TRACE_INCLUDE_PATH .|#define TRACE_INCLUDE_PATH ../../techpack/datarmnet/core|g' "$header"
               filename=$(basename "$header")
