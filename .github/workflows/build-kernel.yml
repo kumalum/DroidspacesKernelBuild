@@ -110,11 +110,19 @@ jobs:
           echo "=== [3/3] 修复 qcom-spmi-adc5 缺失的 QN5965 标定宏 ==="
           VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
           if [ -f "$VADC_HEADER" ]; then
-            # 寻找 SCALE_HW_CALIB_BATT_THERM_100K，并在其后插入缺失的 QN5965 宏
-            sed -i '/SCALE_HW_CALIB_BATT_THERM_100K,/a \	SCALE_HW_CALIB_BATT_THERM_100K_QN5965,' "$VADC_HEADER"
-            sed -i '/SCALE_HW_CALIB_PM5_NUM,/a \	SCALE_HW_CALIB_THERM_100K_QN5965,' "$VADC_HEADER"
+            # 1. 先安全地注入 BATT_THERM 宏（如果尚未存在）
+            if ! grep -q "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER"; then
+              sed -i '/SCALE_HW_CALIB_BATT_THERM_100K,/a \	SCALE_HW_CALIB_BATT_THERM_100K_QN5965,' "$VADC_HEADER"
+            fi
             
-            echo "✅ QN5965 标定宏注入成功！"
+            # 2. 以前面注入成功的 BATT_THERM 宏为精准锚点，在它后面直接塞入普通的 THERM 宏
+            if ! grep -q "SCALE_HW_CALIB_THERM_100K_QN5965" "$VADC_HEADER"; then
+              sed -i '/SCALE_HW_CALIB_BATT_THERM_100K_QN5965,/a \	SCALE_HW_CALIB_THERM_100K_QN5965,' "$VADC_HEADER"
+            fi
+            
+            echo "✅ QN5965 系列标定宏已全部精准注入！"
+            # 打印上下文预览，方便在 Actions 日志里肉眼核对
+            grep -B 2 -A 2 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || true
           else
             echo "❌ 未找到 $VADC_HEADER 头文件"
           fi
