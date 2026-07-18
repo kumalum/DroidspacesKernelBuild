@@ -272,7 +272,6 @@ jobs:
       - name: 执行内核编译 (使用 AOSP 交叉编译链)
         run: |
           cd kernel-src
-          export KBUILD_OUTPUT=out # 内核原生支持的环境变量，等同于 O=out
           make mrproper
                
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
