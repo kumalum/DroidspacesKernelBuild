@@ -207,20 +207,27 @@ jobs:
           else
             echo "❌ 未找到 $QG_SRC 源文件"
           fi
-
-          echo "=== [8/8] 🔋 修复 fg-alg.c 算法函数缺失与死标签报错 ==="
+          echo "=== [8/8] 🔋 修复 fg-alg.c 算法函数参数不匹配与死标签报错 ==="
           FG_SRC="drivers/power/supply/qcom/fg-alg.c"
           if [ -f "$FG_SRC" ]; then
-            # 1. 将缺失的魔改函数替换为高通原生的、已声明的函数
+            # 1. 强行还原文件，洗掉上一次改出来的冲突
+            git checkout -- "$FG_SRC" 2>/dev/null || true
+
+            # 2. 将魔改函数名替换为原生函数名
             sed -i 's/cap_wt_learning_process_full_data/cap_learning_process_full_data/g' "$FG_SRC"
             
-            # 2. 精准注释掉第 941 行没被使用的 out: 标签，防止 -Werror 拦截
+            # 3. 🚨 关键一步：将调用处的第三个参数 batt_soc_cp 删掉，使其符合 2 参数预期
+            # 匹配包含 cap_learning_process_full_data 的上下文，移除多余的参数
+            sed -i '/cap_learning_process_full_data/,/batt_soc_cp/ { s/,.*batt_soc_cp// }' "$FG_SRC"
+            
+            # 4. 精准注释掉第 941 行没被使用的 out: 标签
             sed -i '941s/out:/\/\/ out:/' "$FG_SRC"
 
-            echo "✅ fg-alg.c 算法冲突与死标签已彻底修复！"
+            echo "✅ fg-alg.c 函数参数修正与死标签修复完毕！"
           else
             echo "❌ 未找到 $FG_SRC 源文件"
           fi
+
 
       
       - name: 应用 DroidSpaces 补丁
