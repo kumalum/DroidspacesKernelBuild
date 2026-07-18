@@ -31,7 +31,7 @@ jobs:
           echo "=== 克隆 clang 编译器"
           git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
       
-      - name: 修复 编译时产生的问题
+      - name: 修复编译报错
         if: github.event.inputs.skip_deploy != 'true'
         run: |
           echo "=== 修复找不到 .h 文件的问题"
@@ -53,10 +53,17 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
 
-          echo "==== 正在修正 drivers/iio/adc/qcom-spmi-adc5.c ===="
-          # 顺应编译器的报错提示，把未定义的 _QN5965 后缀变量替换为已定义的标准变量
+      - name: 修复编译报错：高通 ADC5 源码宏冲突
+        run: |
+          cd kernel-src
+          echo "==== 正在精确修正 drivers/iio/adc/qcom-spmi-adc5.c ===="
+        
+          # 1. 无论源码里现在是带 _QN5965 的老名字，还是少字的新名字，通通强制修正为头文件中合法的 BATT 变量
           sed -i 's/SCALE_HW_CALIB_BATT_THERM_100K_QN5965/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
-          sed -i 's/SCALE_HW_CALIB_THERM_100K_QN5965/SCALE_HW_CALIB_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
+          sed -i 's/SCALE_HW_CALIB_THERM_100K_QN5965/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
+          sed -i 's/SCALE_HW_CALIB_THERM_100K/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
+        
+          echo "==== 修正完毕 ===="
       
       - name: 应用 DroidSpaces 补丁
         run: |
@@ -69,8 +76,14 @@ jobs:
           
           echo "==== 正在应用 002 POSIX Queue 补丁 ===="
           if patch -p1 < 002-posix_mqueue.patch > /dev/null; then
-            :
+            echo "✌️陪你002 文件合并成功"
           else
+            echo "POSIX_FLAGE=true" >> $GITHUB_ENV
+
+      - name: 修复 002 补丁报错
+        run: |
+          cd kernel-src
+          if [ $POSIX_FLAGE == "true" ]; then
             TARGET_FILE="include/linux/sched/user.h"
             
             # 3. 使用 awk 精准锁定并替换结构体内部的目标行
