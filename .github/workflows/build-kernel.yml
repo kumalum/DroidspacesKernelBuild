@@ -2,11 +2,10 @@ name: Build Xperia 10 IV DroidSpaces Kernel
 
 on:
   workflow_dispatch: # 支持在 GitHub 页面手动点击运行
-    inputs:
-      skip_deploy:
-        description: '是否跳过部署步骤？(true/false)'
-        required: false
-        default: 'false'
+
+env:
+  # clang 编译器选择 google lineage
+  CLANG: "google"
 
 jobs:
   build:
@@ -28,9 +27,37 @@ jobs:
         run: |
           echo "克隆源代码"
           git clone -q --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_sony_sm6375.git kernel-src
+          
+      - name: Lineage clang 编译器
           echo "=== 克隆 clang 编译器"
-          git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
-      
+
+      - name: 下载并部署clang 编译器
+        run: |
+          
+          if [ "$CLANG" == "lineage" ]; then
+            git clone -q --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
+          
+          elif [ "$CLANG" == "google" ]; then
+            mkdir -p $GITHUB_WORKSPACE/clang
+            cd $GITHUB_WORKSPACE/clang
+        
+            # 1. 下载 Google 官方为 Android 内核（如 5.4 / 5.10 GKI）配套的稳定版 Clang r498226b (Clang 17.0.2)
+            # 这是目前高通 5.4 内核兼顾老旧驱动和 GKI 审查最稳的版本
+            echo "正在从 Google 官方服务器拉取 Clang 工具链..."
+            wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498226b.tar.gz
+            
+            # 2. 解压编译器本体
+            tar -xzf clang-r498226b.tar.gz
+            rm -f clang-r498226b.tar.gz
+            
+            # 3. 验证下载是否成功
+            echo "Google Clang 部署成功，当前版本验证："
+            ./bin/clang --version
+          else
+            echo "❌ 请填写编译器"
+            exit 1
+          fi
+
       - name: 修复编译报错
         if: github.event.inputs.skip_deploy != 'true'
         run: |
@@ -53,18 +80,6 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
 
-      - name: 修复编译报错：高通 ADC5 源码宏冲突
-        run: |
-          cd kernel-src
-          echo "==== 正在精确修正 drivers/iio/adc/qcom-spmi-adc5.c ===="
-        
-          # 1. 无论源码里现在是带 _QN5965 的老名字，还是少字的新名字，通通强制修正为头文件中合法的 BATT 变量
-          sed -i 's/SCALE_HW_CALIB_BATT_THERM_100K_QN5965/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
-          sed -i 's/SCALE_HW_CALIB_THERM_100K_QN5965/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
-          sed -i 's/SCALE_HW_CALIB_THERM_100K/SCALE_HW_CALIB_BATT_THERM_100K/g' drivers/iio/adc/qcom-spmi-adc5.c
-        
-          echo "==== 修正完毕 ===="
-      
       - name: 应用 DroidSpaces 补丁
         run: |
           cd kernel-src
@@ -133,14 +148,13 @@ jobs:
           # Namespaces
           CONFIG_IPC_NS=y
           CONFIG_PID_NS=y
-          
-          # 核心修复：关闭导致编译失败的高通 ADC5 冲突项
-          # 或者强制重置相关 PMIC 标定宏
-          CONFIG_SENSORS_QPNP_ADC_VOLTAGE=n
-          CONFIG_QCOM_SPMI_ADC5=n
           EOF
 
 
+          # 核心修复：关闭导致编译失败的高通 ADC5 冲突项
+          # 或者强制重置相关 PMIC 标定宏
+          # CONFIG_SENSORS_QPNP_ADC_VOLTAGE=n
+          # CONFIG_QCOM_SPMI_ADC5=n
           # NixOS / tmpfs support
           # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
           # set_config "CONFIG_TMPFS_XATTR" "y"
@@ -192,10 +206,10 @@ jobs:
           #   echo "=============================================="
           # fi
       
-      - name: 自动解包原本的 boot.img 并替换新内核
+      - name: 收集文件
         run: |
-
           mkdir -p out_artifacts
+          
           echo "=== 收集编译出来的 Image 文件 ==="
           NEW_KERNEL="kernel-src/out/arch/arm64/boot/Image"
           if [ -f "$NEW_KERNEL" ]; then
