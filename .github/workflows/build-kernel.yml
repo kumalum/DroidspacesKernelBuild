@@ -195,6 +195,19 @@ jobs:
           else
             echo "❌ 未找到 $SMB_SRC 源文件"
           fi
+
+          echo "=== [7/7] 🔋 修复 qpnp-qg.c 中未使用的电池寿命函数警告 ==="
+          QG_SRC="drivers/power/supply/qcom/qpnp-qg.c"
+          if [ -f "$QG_SRC" ]; then
+            # 锁定第 2090 行的冲突静态函数，为其注入 __maybe_unused 属性
+            # 这样即使该函数在 Holi 平台没被调用，Clang 编译器也不会再当作错误拦截
+            sed -i '2090s/static int/__maybe_unused static int/' "$QG_SRC"
+
+            echo "✅ qpnp-qg.c 的未使用函数警告已通过 __maybe_unused 完美修复！"
+          else
+            echo "❌ 未找到 $QG_SRC 源文件"
+          fi
+
       
       - name: 应用 DroidSpaces 补丁
         run: |
