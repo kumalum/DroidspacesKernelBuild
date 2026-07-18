@@ -74,7 +74,7 @@ jobs:
           echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
 
       - name: LLVM
-        if: env.LLVM == true
+        if: env.LLVM
         run: |
           mkdir -p $GITHUB_WORKSPACE/llvm-clang
           cd $GITHUB_WORKSPACE/llvm-clang
@@ -261,7 +261,7 @@ jobs:
           
           # 基础GKI 框架 + 高通 holi 专属驱动 + DroidSpaces 修正
           ./scripts/kconfig/merge_config.sh -m .config \
-            vendor/holi-qgki_defconfig \
+            arch/arm64/configs/vendor/holi-qgki_defconfig \
             arch/arm64/configs/diffconfig/common.config \
             ../droidspaces.config
           
