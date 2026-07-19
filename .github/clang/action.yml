@@ -27,15 +27,15 @@ runs:
 
     - name: Clang AOSP
       if: env.CLANG == 'google'
-      uses: ./.github/workflows/clang/google
+      uses: ./.github/clang/google
 
     - name: Clang Lineage
       if: env.CLANG == 'lineage'
-      uses: ./.github/workflows/clang/lineage
+      uses: ./.github/clang/lineage
     
     - name: Clang AOSP
       if: env.CLANG == 'llvm'
-      uses: ./.github/workflows/clang/llvm
+      uses: ./.github/clang/llvm
 
     - name: 输出 Clang 版本
       run: |

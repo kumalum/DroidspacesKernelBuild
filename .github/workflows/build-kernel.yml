@@ -1,4 +1,4 @@
-name: Build SONY SM6375 Kernel
+name: Build Kernel
 
 on:
   workflow_dispatch: # 支持在 GitHub 页面手动点击运行
@@ -24,19 +24,19 @@ jobs:
           fetch-depth: 1
     
       - name: 设置 ubuntu-latest 依赖
-        uses: ./.github/workflows/clang/depend/ubuntu
+        uses: ./.github/clang/depend/ubuntu
       
       - name: clang
         if: env.CLANG
-        uses: ./.github/workflows/clang
+        uses: ./.github/clang
 
       - name: 支持 DroidSpaces 的内核配置
         if: true
-        uses: ./.github/workflows/droidspaces
+        uses: ./.github/droidspaces
       
       - name: srouce_kernel_sony_sm6375
         if: true
-        uses: ./.github/workflows/bulid
+        uses: ./.github/bulid
       
       - name: 上传物品
-        uses: ./.github/workflows/upload
+        uses: ./.github/upload
