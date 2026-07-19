@@ -24,6 +24,7 @@ runs:
         echo "当前不是 GKI 编译环境"
   
   - name: 输出当前环境变量
+    shell: bash
     run: env
 
   - name: Clang AOSP
