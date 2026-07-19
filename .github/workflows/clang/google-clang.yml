@@ -1,0 +1,54 @@
+name: Download and Cache AOSP Clang
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # 支持手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 1. 设置缓存机制
+    - name: Cache AOSP Clang
+      id: cache-clang
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/clang-r450784d
+        # 使用固定的 key，因为这个 Clang 版本内容永远不会变
+        key: aosp-clang-r450784d-v1
+
+    # 2. 只有在缓存未命中 (Hit Miss) 时，才执行下载和解压
+    - name: Download Clang if not cached
+      if: steps.cache-clang.outputs.cache-hit != 'true'
+      run: |
+        echo "缓存未命中，开始从 AOSP 官方源下载..."
+        mkdir -p ${{ github.workspace }}/clang-r450784d
+        
+        # 使用 wget 下载压缩包
+        wget -q -O clang.tar.gz "https://googlesource.com"
+        
+        # 解压到目标目录
+        tar -C ${{ github.workspace }}/clang-r450784d/ -zxf clang.tar.gz
+        rm clang.tar.gz
+        echo "下载并解压完成！"
+
+    # 3. 验证 Clang 是否可用（无论是来自缓存还是刚刚下载的）
+    - name: Verify Clang Version
+      run: |
+        echo "验证 Clang 路径和版本："
+        # 赋予可执行权限（有时缓存/解压后可能丢失权限）
+        chmod +x ${{ github.workspace }}/clang-r450784d/bin/clang
+        # 查看版本
+        ${{ github.workspace }}/clang-r450784d/bin/clang --version
+
+    # 4. 配置环境变量（供后续编译步骤使用）
+    - name: Set up Environment
+      run: |
+        # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中
+        echo "${{ github.workspace }}/clang-r450784d/bin" >> $GITHUB_PATH
+
