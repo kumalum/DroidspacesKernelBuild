@@ -7,6 +7,7 @@ runs:
       uses: ./.github/patches
 
     - name: 编译内核
+      shell: bash
       run: | 
           cd kernel-src
           make mrproper
@@ -33,6 +34,7 @@ runs:
             echo "🎉 内核本体编译成功！"
       
     - name: 收集编译后的产物
+      shell: bash
       run: |
         mkdir -p $OUTPATH 
         
