@@ -34,14 +34,20 @@ jobs:
           fetch-depth: 1
           path: 'clang'
 
-      - name: google-clang
-        if: env.CLANG && env.CLANG_NAME == 'google' 
-        uses: actions/checkout@v4
-        with:
-          repository: 'Nicklas373/aosp-clang'
-          ref: 'r412851'
-          fetch-depth: 1
-          path: 'clang'
+      - name: clang-google
+        if: env.CLANG && env.CLANG_NAME == 'google'
+        run: |
+          chmod +x ${{ github.workspace }}/clang-r450784d/bin/clang
+          CLANG_VER_OUT=$(${{ github.workspace }}/clang-r450784d/bin/clang --version 2>&1)
+          if [ -z "$CLANG_VER_OUT" ]; then
+            echo "❌ 错误：Clang 命令未返回任何输出（可能文件损坏或架构不兼容）！"
+            exit 1  # 没输出说明绝对有问题，建议用 exit 1 让流水线报错报红
+          fi
+
+          echo "$CLANG_VER_OUT"
+          
+          echo "${{ github.workspace }}/clang-r450784d/bin" >> $GITHUB_PATH
+
 
       - name: 全局变量
         run: |
