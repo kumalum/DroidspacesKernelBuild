@@ -22,21 +22,20 @@ jobs:
         # 使用固定的 key，因为这个 Clang 版本内容永远不会变
         key: aosp-clang-r450784d-v1
 
-    # 2. 只有在缓存未命中 (Hit Miss) 时，才执行下载和解压
-    - name: Download Clang if not cached
+    # 2. 只有在缓存未命中时，才执行下载和提取
+    - name: Download Clang via Git if not cached
       if: steps.cache-clang.outputs.cache-hit != 'true'
       run: |
-        echo "缓存未命中，开始从 AOSP 官方源下载..."
+        echo "缓存未命中，开始通过 Git 浅克隆拉取 Android 13 Clang 仓库..."
+        # 1. 深度为 1 仅克隆特定分支，不拉取历史提交
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android-13.0.0_r13 tmp_clang
+        # 2. 创建目标目录并把所需的版本移动过去
         mkdir -p ${{ github.workspace }}/clang-r450784d
-        
-        # 使用 wget 下载压缩包
-        wget -q -O clang.tar.gz "https://googlesource.com"
-        
-        # 解压到目标目录
-        tar -C ${{ github.workspace }}/clang-r450784d/ -zxf clang.tar.gz
-        rm clang.tar.gz
-        echo "下载并解压完成！"
-
+        mv tmp_clang/clang-r450784d/* ${{ github.workspace }}/clang-r450784d/
+        # 3. 清理临时克隆目录
+        rm -rf tmp_clang
+        echo "提取完成！"
+    
     # 3. 验证 Clang 是否可用（无论是来自缓存还是刚刚下载的）
     - name: Verify Clang Version
       run: |
