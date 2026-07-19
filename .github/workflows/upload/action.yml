@@ -1,0 +1,10 @@
+name: upload
+description: '上传编译后的产物'
+runs:
+  using: "composite" # 声明这是一个复合动作
+    steps:
+      - name: 上传编译包到本运行记录 (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-kernel
+          path: ${{ env.OUTPATH }}/*

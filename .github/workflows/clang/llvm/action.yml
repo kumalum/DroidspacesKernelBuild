@@ -1,0 +1,34 @@
+name: clang+llvm
+description: '设置 clang  为 LLVM+Clang'
+runs:
+  using: "composite" # 声明这是一个复合动作
+    steps:
+    # 1. 设置缓存机制
+    - name: Cache LLVM-Clang
+      id: cache-llvm
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/llvm-clang
+        # 使用固定的 key，因为这个 Clang 版本内容永远不会变
+        key: clang+llvm-17.0.6-ubuntu22
+ 
+    - name: 只有在缓存未命中时，才执行下载和提取
+      if: steps.cache-llvm.outputs.cache-hit != 'true'
+      run: |
+          mkdir -p $GITHUB_WORKSPACE/llvm-clang
+          cd $GITHUB_WORKSPACE/llvm-clang
+          
+          echo "==== 正在拉取 LLVM 官方 17.0.6 稳定版工具链 ===="
+          curl -L --retry 5 --retry-delay 2 -o llvm-17.tar.xz \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz"
+          
+          echo "==== 正在解压 ===="
+          tar -f llvm-17.tar.xz -xJ --strip-components=1 || { echo "❌ 解压失败"; exit 1; }
+          rm -f llvm-17.tar.xz
+
+    # 4. 配置环境变量（供后续编译步骤使用）
+    - name: 设置 Clang+LLVM 的环境变量
+      run: |
+        chmod +x ${{ github.workspace }}/llvm-clang/bin/clang
+        # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中
+        echo "$GITHUB_WORKSPACE/llvm-clang/bin" >> $GITHUB_PATH

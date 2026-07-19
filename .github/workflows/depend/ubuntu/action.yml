@@ -1,0 +1,11 @@
+name: ubuntu-latest
+description: '设置 ubuntu-latest 的编译环境'
+runs:
+  using: "composite" # 声明这是一个复合动作
+  steps:
+    - name: 优化磁盘空间并安装构建依赖
+      run: |
+        sudo docker image prune -a -f
+        sudo docker container prune -f
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential ccache curl flex git libelf-dev liblz4-tool libssl-dev lzop rsync zip zlib1g-dev

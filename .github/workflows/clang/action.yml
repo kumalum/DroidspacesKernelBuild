@@ -1,0 +1,42 @@
+name: Select Clang
+description: '选择 Clang'
+runs:
+  using: "composite" # 声明这是一个复合动作
+    steps:
+    
+    - name: 设置编译的环境变量
+      run: |
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        echo "SUBARCH=arm64" >> $GITHUB_ENV
+
+        if [ $GKI == "true" ]; then
+          
+          echo "LLVM=1" >> $GITHUB_ENV 
+          echo "LLVM_IAS=1" >> $GITHUB_ENV  
+          
+          # 针对交叉编译的 Target 声明
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+          echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+          
+          echo "GKI 的环境变量设置完成"
+        else
+          echo "当前不是 GKI 编译环境"
+    
+    - name: 输出当前环境变量
+      run: env
+
+    - name: Clang AOSP
+      if: env.CLANG == 'google'
+      uses: ./.github/workflows/clang/google
+
+    - name: Clang Lineage
+      if: env.CLANG == 'lineage'
+      uses: ./.github/workflows/clang/lineage
+    
+    - name: Clang AOSP
+      if: env.CLANG == 'llvm'
+      uses: ./.github/workflows/clang/llvm
+
+    - name: 输出 Clang 版本
+      run: |
+        clang --version

@@ -1,0 +1,82 @@
+name: DroidSpaces
+description: '支持 DroidSpaces 的 内核配置'
+runs:
+  using: "composite" # 声明这是一个复合动作
+
+      - name: 设置补丁位置的环境变量
+        run: |
+          PATCH_DIR="$GITHUB_WORKSPACE/droidspaces_kernel/patches"
+
+      - name: KABI 补丁
+        run: |
+          cd kernel-src
+
+          cp $PATCH_DIR/00*.patch ./
+          echo "==== 正在应用 001 kABI 修复补丁 ===="
+          patch -p1 < 001-fix_sysvipc.patch
+      
+      - name: POSIX Queue 补丁 
+        run: |
+          cd kernel-src 
+          if patch -p1 < 002-posix_mqueue.patch > /dev/null; then
+            echo "✌️: 合并成功"
+          else
+            TARGET_FILE="include/linux/sched/user.h"
+            
+            # 3. 使用 awk 精准锁定并替换结构体内部的目标行
+            # 这种写法完全不依赖系统的 sed 版本差异，对 CI 环境极其友好
+            awk '
+            /struct ratelimit_state ratelimit;/ {
+                print $0;
+                print "#if defined(CONFIG_POSIX_MQUEUE)";
+                print "\tANDROID_KABI_USE(1, unsigned long mq_bytes);";
+                print "\tANDROID_KABI_RESERVE(2);";
+                print "\tANDROID_OEM_DATA_ARRAY(1, 2);";
+                print "#else";
+                print "\tANDROID_KABI_RESERVE(1);";
+                print "\tANDROID_KABI_RESERVE(2);";
+                print "\tANDROID_OEM_DATA_ARRAY(1, 2);";
+                print "#endif";
+                
+                # 跳过接下来原本要被替换掉的老旧 3 行代码
+                skip = 3;
+                next;
+            }
+            {
+                if (skip > 0) {
+                    skip--;
+                } else {
+                    print $0;
+                }
+            }
+            ' "$TARGET_FILE" > "${TARGET_FILE}.tmp" && mv "${TARGET_FILE}.tmp" "$TARGET_FILE"
+            
+            # 4. 验证最终结果
+            if grep -q "CONFIG_POSIX_MQUEUE" "$TARGET_FILE"; then
+                echo "✅ 修复成功！"
+                # 清理残留的补丁拒绝文件
+                [ -f "${TARGET_FILE}.rej" ] && rm "${TARGET_FILE}.rej"
+                exit 0
+            else
+                echo "❌ 修复失败，文件内容不匹配。"
+                exit 1
+            fi
+          fi
+
+
+      - name: 注入 DroidSpaces 核心与推荐配置, 到 defconfig 文件
+        run: |
+        
+          cat <<EOF > ./droidspaces.config
+          # IPC
+          CONFIG_SYSVIPC=y
+          CONFIG_POSIX_MQUEUE=y
+          
+          # Namespaces
+          CONFIG_IPC_NS=y
+          CONFIG_PID_NS=y
+          EOF
+
+          # NixOS / tmpfs support
+          # set_config "CONFIG_TMPFS_POSIX_ACL" "y"
+          # set_config "CONFIG_TMPFS_XATTR" "y"
