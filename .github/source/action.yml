@@ -5,6 +5,7 @@ runs:
   steps:    
     - name: Get Latest Kernel Commit Hash
       id: get-hash
+      shell: bash
       run: |
         # 远程获取 LineageOS 该分支最新的 commit hash
         LATEST_HASH=$(git ls-remote https://github.com refs/heads/lineage-23.2 | awk '{print $1}')
