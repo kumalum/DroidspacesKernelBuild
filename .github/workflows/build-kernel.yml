@@ -43,7 +43,7 @@ jobs:
       
       - name: bulid kernel
         if: true
-        uses: ./.github/bulid
+        uses: ./.github/build
       
       - name: 上传物品
         uses: ./.github/upload
