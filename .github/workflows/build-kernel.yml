@@ -104,15 +104,19 @@ jobs:
         run: |
           cd kernel-src 
 
-          echo "=== 💥 优雅拔除 -Werror，将警告降级为普通提示 ==="
-          # 1. 优先把 -Werror=xxx 形式的参数替换为 -Wxxx（例如 -Werror=strict-prototypes 变成 -Wstrict-prototypes）
-          # 这样既去掉了把警告当错误的逻辑，又保留了原有的警告检测，不会导致参数碎掉
-          find . -name "Makefile*" -o -name "Makefile" | xargs sed -i 's/-Werror=/-W/g' 2>/dev/null || true
-
-          # 2. 再把那些独立的、落单的 -Werror 标志单独消灭掉（注意前后匹配空格或边界，防止误伤）
-          find . -name "Makefile*" -o -name "Makefile" | xargs sed -i 's/\b-Werror\b//g' 2>/dev/null || true
-
-          echo "✅ 全局 -Werror 已优雅抹除，编译参数结构完整！"
+          echo "=== 🎯 精准注入特定警告降级标志 (KCFLAGS) ==="
+          MAKEFILE_PATH="Makefile"
+          if [ -f "$MAKEFILE_PATH" ]; then
+            # 在 Makefile 的第一行直接注入全局环境参数 KCFLAGS
+            # 显式指定 -Wno-error=implicit-function-declaration 和 -Wno-error=incompatible-pointer-types
+            # 这样整个构建系统在编译所有子目录的 .c 文件时，都会强制继承这两个不拦截编译的规则
+            sed -i '1i KCFLAGS += -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types' "$MAKEFILE_PATH"
+            
+            echo "✅ 根目录 Makefile 已成功注入 KCFLAGS 降级参数！"
+          else
+            echo "❌ 未找到根目录 Makefile"
+            exit 1
+          fi
 
       
       - name: 编译报错处理
