@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      - name: Checkout repository
+      - name: 获取 action 和 patches
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
@@ -29,11 +29,11 @@ jobs:
       - name: 设置 ubuntu-latest 依赖
         uses: ./.github/depend/ubuntu
       
-      - name: clang
+      - name: clang 编译器
         if: env.CLANG
         uses: ./.github/clang
 
-      - name: source_code
+      - name: 内核源代码
         if: true
         uses: ./.github/source
       
@@ -41,7 +41,7 @@ jobs:
         if: true
         uses: ./.github/droidspaces
       
-      - name: bulid kernel
+      - name: 构建内核
         if: true
         uses: ./.github/build
       

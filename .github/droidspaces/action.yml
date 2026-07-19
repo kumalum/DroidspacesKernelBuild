@@ -73,6 +73,8 @@ runs:
         # Namespaces
         CONFIG_IPC_NS=y
         CONFIG_PID_NS=y
+
+        CONFIG_ARCH_SONY_MURRAY=y
         EOF
 
         # NixOS / tmpfs support
