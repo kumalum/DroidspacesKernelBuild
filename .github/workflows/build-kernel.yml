@@ -30,11 +30,15 @@ jobs:
         if: env.CLANG
         uses: ./.github/clang
 
+      - name: source_code
+        if: true
+        uses: ./.github/source
+      
       - name: 支持 DroidSpaces 的内核配置
         if: true
         uses: ./.github/droidspaces
       
-      - name: srouce_kernel_sony_sm6375
+      - name: bulid kernel
         if: true
         uses: ./.github/bulid
       
