@@ -2,7 +2,7 @@ name: sony sm6375 kernel-src
 description: 'Sony sm6375 内核代码'
 runs:
   using: "composite"
-    
+  steps:    
     - name: Get Latest Kernel Commit Hash
       id: get-hash
       run: |
