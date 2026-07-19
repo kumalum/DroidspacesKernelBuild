@@ -7,8 +7,8 @@ runs:
       id: get-hash
       shell: bash
       run: |
-        # 远程获取 LineageOS 该分支最新的 commit hash
-        LATEST_HASH=$(git ls-remote https://github.com refs/heads/lineage-23.2 | awk '{print $1}')
+        # 远程获取 LineageOS 该分支最新的 commit hash        
+        LATEST_HASH=$(git ls-remote https://github.com/LineageOS/android_kernel_sony_sm6375.git refs/heads/lineage-23.2 | awk '{print $1}')
         echo "最新提交哈希: $LATEST_HASH"
         # 将哈希值存入 GitHub Actions 的环境变量输出中
         echo "kernel_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
