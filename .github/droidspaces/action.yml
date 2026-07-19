@@ -3,25 +3,19 @@ description: '支持 DroidSpaces 的 内核配置'
 runs:
   using: "composite" # 声明这是一个复合动作
   steps:
-    - name: 设置补丁位置的环境变量
-      shell: bash
-      run: |
-        PATCH_DIR="$GITHUB_WORKSPACE/droidspaces_kernel/patches"
-
     - name: KABI 补丁
       shell: bash
       run: |
         cd kernel-src
 
-        cp $PATCH_DIR/00*.patch ./
         echo "==== 正在应用 001 kABI 修复补丁 ===="
-        patch -p1 < 001-fix_sysvipc.patch
+        patch -p1 < ../patches/001-fix_sysvipc.patch
     
     - name: POSIX Queue 补丁 
       shell: bash
       run: |
         cd kernel-src 
-        if patch -p1 < 002-posix_mqueue.patch > /dev/null; then
+        if patch -p1 < ../patches/002-posix_mqueue.patch > /dev/null; then
           echo "✌️: 合并成功"
         else
           TARGET_FILE="include/linux/sched/user.h"
