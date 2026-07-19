@@ -2,31 +2,33 @@ name: Clang AOSP
 description: '设置 Clang 为 Google / AOSP'
 runs:
   using: "composite" # 声明这是一个复合动作
-    steps:
+  steps:
 
-    # 1. 设置缓存机制
-    - name: 设置 AOSP 缓存
-      id: cache-clang
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/clang-r450784d
-        key: aosp-clang-r450784d-v1
+  # 1. 设置缓存机制
+  - name: 设置 AOSP 缓存
+    id: cache-clang
+    uses: actions/cache@v4
+    with:
+      path: ${{ github.workspace }}/clang-r450784d
+      key: aosp-clang-r450784d-v1
 
-    - name: 缓存未命中，开始通过 Git 浅克隆拉取 Android 13 Clang 仓库... 
-      if: steps.cache-clang.outputs.cache-hit != 'true'
-      run: |
-        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android-13.0.0_r13 tmp_clang
-        
-        mkdir -p ${{ github.workspace }}/clang-r450784d
-        mv tmp_clang/clang-r450784d/* ${{ github.workspace }}/clang-r450784d/
-       
-        rm -rf tmp_clang
-        echo "提取完成！"
+  - name: 缓存未命中，开始通过 Git 浅克隆拉取 Android 13 Clang 仓库... 
+    if: steps.cache-clang.outputs.cache-hit != 'true'
+    shell: bash
+    run: |
+      git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b android-13.0.0_r13 tmp_clang
+      
+      mkdir -p ${{ github.workspace }}/clang-r450784d
+      mv tmp_clang/clang-r450784d/* ${{ github.workspace }}/clang-r450784d/
+     
+      rm -rf tmp_clang
+      echo "提取完成！"
 
-    - name: 设置环境变量
-      run: |
-        # 赋予可执行权限（有时缓存/解压后可能丢失权限）
-        chmod +x ${{ github.workspace }}/clang-r450784d/bin/clang
-        # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中
-        echo "${{ github.workspace }}/clang-r450784d/bin" >> $GITHUB_PATH
+  - name: 设置环境变量
+    shell: bash
+    run: |
+      # 赋予可执行权限（有时缓存/解压后可能丢失权限）
+      chmod +x ${{ github.workspace }}/clang-r450784d/bin/clang
+      # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中
+      echo "${{ github.workspace }}/clang-r450784d/bin" >> $GITHUB_PATH
 

@@ -14,6 +14,7 @@ runs:
  
     - name: 只有在缓存未命中时，才执行下载和提取
       if: steps.cache-llvm.outputs.cache-hit != 'true'
+      shell: bash
       run: |
           mkdir -p $GITHUB_WORKSPACE/llvm-clang
           cd $GITHUB_WORKSPACE/llvm-clang
@@ -28,6 +29,7 @@ runs:
 
     # 4. 配置环境变量（供后续编译步骤使用）
     - name: 设置 Clang+LLVM 的环境变量
+      shell: bash
       run: |
         chmod +x ${{ github.workspace }}/llvm-clang/bin/clang
         # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中

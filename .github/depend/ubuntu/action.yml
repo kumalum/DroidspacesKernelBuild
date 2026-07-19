@@ -4,6 +4,7 @@ runs:
   using: "composite" # 声明这是一个复合动作
   steps:
     - name: 优化磁盘空间并安装构建依赖
+      shell: bash
       run: |
         sudo docker image prune -a -f
         sudo docker container prune -f

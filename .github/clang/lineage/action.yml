@@ -2,28 +2,29 @@ name: Lineage Clang
 description: '设置 Clang 为 Google / AOSP'
 runs:
   using: "composite" # 声明这是一个复合动作
-    steps:
+  steps:
 
-    # 1. 设置缓存机制
-    - name: Cache Clang
-      id: cache-lineage-clang-23-2
-      uses: actions/cache@v4
-      with:
-        path: ${{ github.workspace }}/clang-lineage
-        key: lineage-clang-23-2
-    
-    - name: git clone Lineage-Clang
-      if: steps.cache-lineage-clang-23-2.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: 'LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b'
-        fetch-depth: 1
-        path: 'clang-lineage'
+  # 1. 设置缓存机制
+  - name: Cache Clang
+    id: cache-lineage-clang-23-2
+    uses: actions/cache@v4
+    with:
+      path: ${{ github.workspace }}/clang-lineage
+      key: lineage-clang-23-2
+  
+  - name: git clone Lineage-Clang
+    if: steps.cache-lineage-clang-23-2.outputs.cache-hit != 'true'
+    uses: actions/checkout@v4
+    with:
+      repository: 'LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b'
+      fetch-depth: 1
+      path: 'clang-lineage'
 
-    - name: 设置环境变量
-      run: |
-        # 赋予可执行权限（有时缓存/解压后可能丢失权限）
-        chmod +x ${{ github.workspace }}/clang-lineage/bin/clang
-        # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中
-        echo "${{ github.workspace }}/clang-lineage/bin" >> $GITHUB_PATH
+  - name: 设置环境变量
+    shell: bash
+    run: |
+      # 赋予可执行权限（有时缓存/解压后可能丢失权限）
+      chmod +x ${{ github.workspace }}/clang-lineage/bin/clang
+      # 将 Clang 的 bin 目录加入到 GitHub Actions 的 PATH 中
+      echo "${{ github.workspace }}/clang-lineage/bin" >> $GITHUB_PATH
 
