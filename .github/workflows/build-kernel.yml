@@ -138,43 +138,43 @@ jobs:
           ls -l include/trace/rmnet_trace.h || true
           ls -l include/trace/wda.h || true
           
-          # echo "=== [3/3] 使用 awk 注入 QN5965 标定宏 ==="
-          # VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
-          # if [ -f "$VADC_HEADER" ]; then
-          #   # 使用 awk 锁定目标行并在其下方精准插入，不受空格/缩进干扰
-          #   awk '
-          #   /SCALE_HW_CALIB_BATT_THERM_100K,/ {
-          #       print $0;
-          #       print "\tSCALE_HW_CALIB_BATT_THERM_100K_QN5965,";
-          #       print "\tSCALE_HW_CALIB_THERM_100K_QN5965,";
-          #       next;
-          #   }
-          #   { print $0; }
-          #   ' "$VADC_HEADER" > "${VADC_HEADER}.tmp" && mv "${VADC_HEADER}.tmp" "$VADC_HEADER"
+          echo "=== [3/3] 使用 awk 注入 QN5965 标定宏 ==="
+          VADC_HEADER="drivers/iio/adc/qcom-vadc-common.h"
+          if [ -f "$VADC_HEADER" ]; then
+            # 使用 awk 锁定目标行并在其下方精准插入，不受空格/缩进干扰
+            awk '
+            /SCALE_HW_CALIB_BATT_THERM_100K,/ {
+                print $0;
+                print "\tSCALE_HW_CALIB_BATT_THERM_100K_QN5965,";
+                print "\tSCALE_HW_CALIB_THERM_100K_QN5965,";
+                next;
+            }
+            { print $0; }
+            ' "$VADC_HEADER" > "${VADC_HEADER}.tmp" && mv "${VADC_HEADER}.tmp" "$VADC_HEADER"
 
-          #   echo "==== 🔍 动态验证头文件修改结果 ===="
-          #   grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
-          #   echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
-          # else
-          #   echo "❌ 未找到 $VADC_HEADER 头文件"
-          #   exit 1
-          # fi
+            echo "==== 🔍 动态验证头文件修改结果 ===="
+            grep -B 1 -A 3 "SCALE_HW_CALIB_BATT_THERM_100K_QN5965" "$VADC_HEADER" || { echo "❌ 注入验证失败！"; exit 1; }
+            echo "✅ 宏定义注入成功，且通过 CI 断言验证！"
+          else
+            echo "❌ 未找到 $VADC_HEADER 头文件"
+            exit 1
+          fi
 
-          # echo "=== [4/4] 🛑 彻底解决 qcom-vadc-common.c 的未使用/重定义冲突 ==="
-          # VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
-          # if [ -f "$VADC_SRC" ]; then
-          #   # 1. 依然在 1641 行对冲突函数进行重命名
-          #   sed -i '1641s/qcom_vadc_scale_hw_calib_batt_therm_100/qcom_vadc_scale_hw_calib_batt_therm_100_sony_murray_only/' "$VADC_SRC"
-          #   
-          #   # 2. 关键一步：在 1641 行前插入 __maybe_unused 属性，堵住编译器的警告
-          #   sed -i '1641s/static int/__maybe_unused static int/' "$VADC_SRC"
+          echo "=== [4/4] 🛑 彻底解决 qcom-vadc-common.c 的未使用/重定义冲突 ==="
+          VADC_SRC="drivers/iio/adc/qcom-vadc-common.c"
+          if [ -f "$VADC_SRC" ]; then
+            # 1. 依然在 1641 行对冲突函数进行重命名
+            sed -i '1641s/qcom_vadc_scale_hw_calib_batt_therm_100/qcom_vadc_scale_hw_calib_batt_therm_100_sony_murray_only/' "$VADC_SRC"
+            
+            # 2. 关键一步：在 1641 行前插入 __maybe_unused 属性，堵住编译器的警告
+            sed -i '1641s/static int/__maybe_unused static int/' "$VADC_SRC"
 
-          #   echo "✅ qcom-vadc-common.c 已通过 __maybe_unused 彻底修复！"
-          # else
-          #   echo "❌ 未找到 $VADC_SRC 源文件"
-          #   exit 1
-          # fi
-          # 
+            echo "✅ qcom-vadc-common.c 已通过 __maybe_unused 彻底修复！"
+          else
+            echo "❌ 未找到 $VADC_SRC 源文件"
+            exit 1
+          fi
+          
           # echo "=== [5/5] 🔋 修复 step-chg-jeita.c 缺少的 5 参数函数声明 ==="
           # JEITA_SRC="drivers/power/supply/qcom/step-chg-jeita.c"
           # if [ -f "$JEITA_SRC" ]; then
