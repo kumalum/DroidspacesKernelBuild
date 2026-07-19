@@ -2,7 +2,7 @@ name: bulid sony sm6375 kernel-src
 description: '编译 Sony sm6375 内核'
 runs:
   using: "composite"
-
+  steps:
     - name: 编译报错处理
       uses: ./.github/patches
 
