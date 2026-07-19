@@ -6,7 +6,7 @@ on:
 env:
   # clang 编译器选择 google lineage
   CLANG: true
-  CLANG_NAME: "lineage"
+  CLANG_NAME: "google"
   LLVM: false
   GKI: true
 
@@ -98,13 +98,24 @@ jobs:
           # 注入到全局 PATH
           echo "$GITHUB_WORKSPACE/llvm-clang/bin" >> $GITHUB_PATH
 
-      - name: sony sm6375 Kernel srcoure
+      - name: Get Latest Kernel Commit Hash
+        id: get-hash
+        run: |
+          # 远程获取 LineageOS 该分支最新的 commit hash
+          LATEST_HASH=$(git ls-remote https://github.com refs/heads/lineage-23.2 | awk '{print $1}')
+          echo "最新提交哈希: $LATEST_HASH"
+          # 将哈希值存入 GitHub Actions 的环境变量输出中
+          echo "kernel_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
+
+      - name: Checkout Sony sm6375 Kernel Source
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
           repository: 'LineageOS/android_kernel_sony_sm6375'
           ref: 'lineage-23.2'
           fetch-depth: 1
           path: 'kernel-src'
+      
       - name: 编译报错处理
         if: true
         run: |

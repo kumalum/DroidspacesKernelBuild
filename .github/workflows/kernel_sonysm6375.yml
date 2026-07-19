@@ -1,4 +1,4 @@
-name: Download and Cache AOSP Clang
+name: Download sony sm6375 kernel-src
 
 on:
   workflow_dispatch: # 支持手动触发
